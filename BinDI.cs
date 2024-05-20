@@ -1006,7 +1006,7 @@ namespace BinDI
         }
 #endif
         
-        public IDisposable Connect<TPublisher, TSubscriber>(TPublisher publisher, TSubscriber subscriber, MethodInfo subscribeMethod)
+        IDisposable Connect<TPublisher, TSubscriber>(TPublisher publisher, TSubscriber subscriber, MethodInfo subscribeMethod)
         {
             _subscribeArguments[0] = subscriber;
             var connection = (IDisposable)subscribeMethod.Invoke(publisher, _subscribeArguments);
@@ -1313,7 +1313,7 @@ namespace BinDI
                         .Range(0, domainConnectionProvider.GetPublishToConnectionCount(registrationType))
                         .Select(i => domainConnectionProvider.GetPublishToConnection(registrationType, i))
                         .Select(attribute => (Type)_subscriberTypeField.GetValue(attribute));
-                    _scopedRegistrationsMap[scopeType].Add(new Registration(registrationType, publisherTypes, subscriberTypes));
+                    _scopedRegistrationsMap[scopeType].Add(new Registration(registrationType.Name, publisherTypes, subscriberTypes));
                 }
             }
         }
@@ -1402,24 +1402,22 @@ namespace BinDI
             public readonly TypeInfo TypeInfo;
             public readonly Connection Connection;
             
-            public Registration(Type registrationType, IEnumerable<Type> publisherTypes, IEnumerable<Type> subscriberTypes)
+            public Registration(string registrationTypeName, IEnumerable<Type> publisherTypes, IEnumerable<Type> subscriberTypes)
             {
-                TypeInfo = new TypeInfo(registrationType);
+                TypeInfo = new TypeInfo(registrationTypeName);
                 Connection = new Connection(publisherTypes, subscriberTypes);
             }
         }
         
         sealed class TypeInfo
         {
-            public readonly Type Type;
             public readonly string TypeName;
             public readonly MonoScript Script;
             
-            public TypeInfo(Type type)
+            public TypeInfo(string typeName)
             {
-                Type = type;
-                TypeName = type.Name;
-                Script = FindScript(TypeName);
+                TypeName = typeName;
+                Script = FindScript(typeName);
             }
         }
         
@@ -1430,8 +1428,8 @@ namespace BinDI
             
             public Connection(IEnumerable<Type> publisherTypes, IEnumerable<Type> subscriberTypes)
             {
-                Publishers = publisherTypes.Select(type => new TypeInfo(type)).ToArray();
-                Subscribers = subscriberTypes.Select(type => new TypeInfo(type)).ToArray();
+                Publishers = publisherTypes.Select(type => new TypeInfo(type.Name)).ToArray();
+                Subscribers = subscriberTypes.Select(type => new TypeInfo(type.Name)).ToArray();
             }
         }
         
