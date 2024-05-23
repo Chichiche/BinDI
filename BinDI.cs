@@ -92,7 +92,7 @@ namespace BinDI
     
     public interface IRegistrationAttribute
     {
-        Type ScopeType { get; }
+        object Scope { get; }
         bool TryRegister(IContainerBuilder builder, Type concreteType);
     }
     
@@ -172,86 +172,139 @@ namespace BinDI
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     public sealed class RegisterToAttribute : Attribute, IRegistrationAttribute
     {
-        public Type ScopeType { get; }
+        public object Scope { get; }
         readonly Lifetime _lifetime;
         
-        public RegisterToAttribute(Type scopeType = null, Lifetime lifetime = Lifetime.Singleton)
+        public RegisterToAttribute(object scope, Lifetime lifetime = Lifetime.Singleton)
         {
-            ScopeType = scopeType ?? typeof( GlobalScope );
+            Scope = scope;
             _lifetime = lifetime;
         }
         
         public bool TryRegister(IContainerBuilder builder, Type concreteType)
         {
-            if (IsGlobalScope && IsAlreadyRegistered(builder, concreteType)) return false;
-            RegisterDomain(builder, concreteType);
+            builder.RegisterDomain(concreteType, _lifetime);
             return true;
         }
+    }
+    
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class RegisterToGlobalAttribute : Attribute, IRegistrationAttribute
+    {
+        public object Scope => GlobalScope.Default;
+        readonly Lifetime _lifetime;
         
-        bool IsGlobalScope => ScopeType == typeof( GlobalScope );
-        
-        static bool IsAlreadyRegistered(IContainerBuilder builder, Type concreteType) => builder.Exists(concreteType, findParentScopes: true);
-        
-        void RegisterDomain(IContainerBuilder builder, Type concreteType)
+        public RegisterToGlobalAttribute(Lifetime lifetime = Lifetime.Singleton)
         {
-            builder.Register(concreteType, _lifetime).AsSelf().AsImplementedInterfaces();
+            _lifetime = lifetime;
+        }
+        
+        public bool TryRegister(IContainerBuilder builder, Type concreteType)
+        {
+            if (builder.IsAlreadyRegisteredInParent(concreteType)) return false;
+            builder.RegisterDomain(concreteType, _lifetime);
+            return true;
+        }
+    }
+    
+    public static class RegisterUtil
+    {
+        public static bool IsAlreadyRegisteredInCurrent(this IContainerBuilder builder, Type type)
+        {
+            return builder.Exists(type, findParentScopes: false);
+        }
+        
+        public static bool IsAlreadyRegisteredInParent(this IContainerBuilder builder, Type type)
+        {
+            return builder.Exists(type, findParentScopes: true);
+        }
+        
+        public static void RegisterDomain(this IContainerBuilder builder, Type type, Lifetime lifetime)
+        {
+            builder.Register(type, lifetime).AsSelf().AsImplementedInterfaces();
         }
     }
     
 #if BINDI_ADDRESSABLE_ENABLED
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-    public sealed class RegisterAddressableAttribute : Attribute, IRegistrationAttribute
+    public sealed class RegisterAddressableToAttribute : Attribute, IRegistrationAttribute
     {
-        public Type ScopeType { get; }
+        public object Scope { get; }
         readonly string _address;
         
-        public RegisterAddressableAttribute(Type scopeType = null, string address = null)
+        public RegisterAddressableToAttribute(object scope, string address = null)
         {
-            ScopeType = scopeType ?? typeof( GlobalScope );
+            Scope = scope;
             _address = address;
         }
         
         public bool TryRegister(IContainerBuilder builder, Type concreteType)
         {
-            if (IsGlobalScope && IsAlreadyRegistered(builder, concreteType)) return false;
-            var operation = LoadOperation(GetAddress(concreteType));
-            OperationAddToScope(builder, operation);
-            if (IsComponent(concreteType)) RegisterComponent(builder, concreteType, operation);
-            else RegisterAsset(builder, operation);
+            builder.RegisterAddressable(concreteType, _address);
             return true;
         }
+    }
+    
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class RegisterAddressableToGlobalAttribute : Attribute, IRegistrationAttribute
+    {
+        public object Scope => GlobalScope.Default;
+        readonly string _address;
         
-        bool IsGlobalScope => ScopeType == typeof( GlobalScope );
+        public RegisterAddressableToGlobalAttribute(string address = null)
+        {
+            _address = address;
+        }
         
-        static bool IsAlreadyRegistered(IContainerBuilder builder, Type concreteType) => builder.Exists(concreteType, findParentScopes: true);
+        public bool TryRegister(IContainerBuilder builder, Type concreteType)
+        {
+            if (builder.IsAlreadyRegisteredInParent(concreteType)) return false;
+            builder.RegisterAddressable(concreteType, _address);
+            return true;
+        }
+    }
+    
+    public static class AddressableUtil
+    {
+        public static void RegisterAddressable(this IContainerBuilder builder, Type concreteType, string address)
+        {
+            var actualAddress = GetAddress(concreteType, address);
+            var operation = LoadAddressable(actualAddress);
+            builder.RegisterUnloadCallback(operation);
+            if (concreteType.IsComponent()) builder.RegisterPrefab(concreteType, operation);
+            else builder.RegisterAsset(operation);
+        }
         
-        static AsyncOperationHandle<UnityObject> LoadOperation(string address)
+        static AsyncOperationHandle<UnityObject> LoadAddressable(string address)
         {
             var operation = Addressables.LoadAssetAsync<UnityObject>(address);
             operation.WaitForCompletion();
             return operation;
         }
         
-        string GetAddress(MemberInfo concreteType) => _address ?? concreteType.Name;
+        static string GetAddress(MemberInfo type, string address)
+        {
+            return address ?? type.Name;
+        }
         
-        static void OperationAddToScope(IContainerBuilder builder, AsyncOperationHandle<UnityObject> operation)
+        static void RegisterUnloadCallback(this IContainerBuilder builder, AsyncOperationHandle<UnityObject> operation)
         {
             builder.RegisterDisposeCallback(_ => Addressables.Release(operation));
         }
         
-        static bool IsComponent(Type concreteType)
+        static bool IsComponent(this Type type)
         {
-            return concreteType.IsSubclassOf(typeof( Component ));
+            return type.IsSubclassOf(typeof( Component ));
         }
         
-        static void RegisterComponent(IContainerBuilder builder, Type concreteType, AsyncOperationHandle<UnityObject> operation)
+        static void RegisterPrefab(this IContainerBuilder builder, Type componentType, AsyncOperationHandle<UnityObject> operation)
         {
             var gameObject = (GameObject)operation.Result;
-            var component = gameObject.GetComponent(concreteType);
+            var component = gameObject.GetComponent(componentType);
             builder.RegisterInstance(component).AsSelf().AsImplementedInterfaces();
         }
         
-        static void RegisterAsset(IContainerBuilder builder, AsyncOperationHandle<UnityObject> operation)
+        static void RegisterAsset(this IContainerBuilder builder, AsyncOperationHandle<UnityObject> operation)
         {
             builder.RegisterInstance(operation.Result).AsSelf().AsImplementedInterfaces();
         }
@@ -617,7 +670,10 @@ namespace BinDI
     
     #region DataTypes
     
-    public sealed class GlobalScope { }
+    public sealed class GlobalScope
+    {
+        public static readonly GlobalScope Default = new();
+    }
     
     public sealed class DomainRegistration
     {
@@ -780,8 +836,8 @@ namespace BinDI
     public sealed class DomainRegistrationProvider
     {
         static readonly ReadOnlyCollection<DomainRegistration> EmptyRegistrations = new( Array.Empty<DomainRegistration>() );
-        readonly Dictionary<Type, List<DomainRegistration>> _scopedRegistrationListSourceMap = new() { { typeof( GlobalScope ), new List<DomainRegistration>() } };
-        readonly Dictionary<Type, ReadOnlyCollection<DomainRegistration>> _scopedRegistrationListMap;
+        readonly Dictionary<object, List<DomainRegistration>> _scopedRegistrationListSourceMap = new() { { GlobalScope.Default, new List<DomainRegistration>() } };
+        readonly Dictionary<object, ReadOnlyCollection<DomainRegistration>> _scopedRegistrationListMap;
         
         public DomainRegistrationProvider(AppDomainProvider appDomainProvider)
         {
@@ -789,9 +845,9 @@ namespace BinDI
             _scopedRegistrationListMap = _scopedRegistrationListSourceMap.ToDictionary(kv => kv.Key, kv => new ReadOnlyCollection<DomainRegistration>(kv.Value));
         }
         
-        public ReadOnlyCollection<DomainRegistration> GetRegistrations(Type scopeType)
+        public ReadOnlyCollection<DomainRegistration> GetRegistrations<T>(T scope)
         {
-            return _scopedRegistrationListMap.GetValueOrDefault(scopeType, EmptyRegistrations);
+            return _scopedRegistrationListMap.GetValueOrDefault(scope, EmptyRegistrations);
         }
         
         void TryCollectRegistrations(Type concreteType)
@@ -806,15 +862,15 @@ namespace BinDI
         
         void CollectRegistrations(Type concreteType, IRegistrationAttribute registrationAttribute)
         {
-            var scopedRegistrationList = GetScopedRegistrationList(registrationAttribute.ScopeType);
+            var scopedRegistrationList = GetScopedRegistrationList(registrationAttribute.Scope);
             scopedRegistrationList.Add(new DomainRegistration(concreteType, registrationAttribute));
         }
         
-        List<DomainRegistration> GetScopedRegistrationList(Type scopeType)
+        List<DomainRegistration> GetScopedRegistrationList(object scope)
         {
-            if (_scopedRegistrationListSourceMap.TryGetValue(scopeType, out var registrationList)) return registrationList;
+            if (_scopedRegistrationListSourceMap.TryGetValue(scope, out var registrationList)) return registrationList;
             registrationList = new List<DomainRegistration>();
-            _scopedRegistrationListSourceMap.Add(scopeType, registrationList);
+            _scopedRegistrationListSourceMap.Add(scope, registrationList);
             return registrationList;
         }
         
@@ -823,6 +879,21 @@ namespace BinDI
             if (builder.Exists(typeof( DomainRegistrationProvider ), findParentScopes: true)) return;
             builder.Register<DomainRegistrationProvider>(Lifetime.Singleton);
             AppDomainProvider.TryInstall(builder);
+        }
+    }
+    
+    public static class RegistrationBinderUtil
+    {
+        public static IScopedObjectResolver CreateScopeWithBinDi(this IObjectResolver scope, params object[] targetScopes)
+        {
+            var registrationBinder = scope.Resolve<RegistrationBinder>();
+            return scope.CreateScope(builder =>
+            {
+                foreach (var targetScope in targetScopes)
+                {
+                    registrationBinder.TryBind(builder, targetScope);
+                }
+            });
         }
     }
     
@@ -864,13 +935,13 @@ namespace BinDI
         
         void RegisterGlobalScopeModules(IContainerBuilder builder, string scopeName)
         {
-            var registrations = _registrationProvider.GetRegistrations(typeof( GlobalScope ));
+            var registrations = _registrationProvider.GetRegistrations(GlobalScope.Default);
             for (var i = 0; i < registrations.Count; i++) TryRegister(builder, registrations[i], scopeName);
         }
         
         void TryRegisterScopedModules<T>(IContainerBuilder builder, T scope)
         {
-            var registrations = _registrationProvider.GetRegistrations(scope.GetType());
+            var registrations = _registrationProvider.GetRegistrations(scope);
             for (var i = 0; i < registrations.Count; i++) TryRegister(builder, registrations[i], _binDiOptions.DomainRegistrationLogEnabled ? scope.ToString() : default);
         }
         
@@ -1096,6 +1167,14 @@ namespace BinDI
         }
     }
     
+    public static class GameObjectScopeBuilderUtil
+    {
+        public static GameObjectScopeBuilder GetGameObjectScopeBuilder(this IObjectResolver scope)
+        {
+            return scope.Resolve<GameObjectScopeBuilder>();
+        }
+    }
+    
     public sealed class GameObjectScopeBuilder
     {
         readonly List<MonoBehaviour> _getComponentsBuffer = new( 16 );
@@ -1110,13 +1189,13 @@ namespace BinDI
             _scope = scope;
         }
         
-        public void TryBuild(GameObject gameObject)
+        public void Build(GameObject gameObject)
         {
             if (gameObject == null) return;
-            _scope.CreateScope(builder => TryBuild(builder, gameObject)).AddTo(gameObject);
+            _scope.CreateScope(builder => Build(builder, gameObject)).AddTo(gameObject);
         }
         
-        public void TryBuild(IContainerBuilder builder, GameObject gameObject)
+        public void Build(IContainerBuilder builder, GameObject gameObject)
         {
             if (gameObject == null) return;
             gameObject.GetComponents(_getComponentsBuffer);
@@ -1132,7 +1211,7 @@ namespace BinDI
             child.GetComponents(_getComponentsBuffer);
             var isScope = _getComponentsBuffer.Any(component => component.GetType().GetCustomAttribute<ScopeAttribute>() != null);
             if (isScope) BuildNewScope(builder, child.gameObject);
-            else TryBuild(builder, child.gameObject);
+            else Build(builder, child.gameObject);
         }
         
         void BuildNewScope(IContainerBuilder builder, GameObject gameObject)
@@ -1140,7 +1219,7 @@ namespace BinDI
             builder.RegisterBuildCallback(CreateNewScope);
             return;
             void CreateNewScope(IObjectResolver scope) => scope.CreateScope(ConfigureNewScope);
-            void ConfigureNewScope(IContainerBuilder newScopeBuilder) => TryBuild(newScopeBuilder, gameObject);
+            void ConfigureNewScope(IContainerBuilder newScopeBuilder) => Build(newScopeBuilder, gameObject);
         }
         
         public static void TryInstall(IContainerBuilder builder)
@@ -1182,7 +1261,7 @@ namespace BinDI
         void ConfigureScope(IContainerBuilder builder, Action<IContainerBuilder> install, GameObject gameObject)
         {
             install?.Invoke(builder);
-            _gameObjectScopeBuilder.TryBuild(builder, gameObject);
+            _gameObjectScopeBuilder.Build(builder, gameObject);
         }
         
         public static void TryInstall(IContainerBuilder builder)
