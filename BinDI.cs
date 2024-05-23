@@ -101,6 +101,12 @@ namespace BinDI
         IDisposable TryConnect<T>(IObjectResolver scope, T publisherOrSubscriber, ConnectionService connectionService);
     }
     
+    public interface IScopedDisposable
+    {
+        void Add(IDisposable disposable);
+        void AddRange(IEnumerable<IDisposable> disposable);
+    }
+    
     #endregion
     
     #region Extensions
@@ -291,7 +297,7 @@ namespace BinDI
         
         static void RegisterUnloadCallback(this IContainerBuilder builder, AsyncOperationHandle<UnityObject> operation)
         {
-            builder.RegisterDisposeCallback(_ => Addressables.Release(operation));
+            builder.RegisterCurrentScopeDisposeCallback(() => Addressables.Release(operation));
         }
         
         static bool IsComponent(this Type type)
@@ -728,6 +734,79 @@ namespace BinDI
     
     #region Managers
     
+    public static class ScopedDisposableUtil
+    {
+        public static IScopedObjectResolver CreateChildScope(this IObjectResolver scope, Action<IContainerBuilder> installation = null)
+        {
+            var childScope = scope.CreateScope(installation);
+            scope.AddOnDisposeCallback(() => childScope.Dispose());
+            return childScope;
+        }
+        
+        public static void AddOnDisposeCallback(this IObjectResolver scope, Action onDispose)
+        {
+            scope.TryResolve<IScopedDisposable>(out var scopedDisposable);
+            scopedDisposable?.Add(Disposable.Create(onDispose));
+        }
+        
+        public static void RegisterCurrentScopeDisposeCallback(this IContainerBuilder builder, Action onDispose)
+        {
+            builder.RegisterBuildCallback(scope => scope.Resolve<IScopedDisposable>().Add(Disposable.Create(onDispose)));
+        }
+    }
+    
+    
+    public sealed class ScopedDisposable : IScopedDisposable, IDisposable
+    {
+#if BINDI_R3_ENABLED
+        DisposableBag _bag;
+        
+        public void Add(IDisposable disposable)
+        {
+            _bag.Add(disposable);
+        }
+        
+        public void AddRange(IEnumerable<IDisposable> disposables)
+        {
+            foreach (var disposable in disposables)
+            {
+                _bag.Add(disposable);
+            }
+        }
+        
+        public void Dispose()
+        {
+            _bag.Dispose();
+        }
+#else
+        CompositeDisposable _disposables;
+        
+        public void Add(IDisposable disposable)
+        {
+            _disposables.Add(disposable);
+        }
+        
+        public void AddRange(IEnumerable<IDisposable> disposables)
+        {
+            foreach (var disposable in disposables)
+            {
+                _disposables.Add(disposable);
+            }
+        }
+        
+        public void Dispose()
+        {
+            _disposables.Dispose();
+        }
+#endif
+        
+        public static void TryInstall(IContainerBuilder builder)
+        {
+            if (builder.Exists(typeof( ScopedDisposable ))) return;
+            builder.Register<IScopedDisposable, ScopedDisposable>(Lifetime.Scoped);
+        }
+    }
+    
     public sealed class BinDiOptions
     {
         public bool CollectAssemblyLogEnabled = false;
@@ -736,6 +815,7 @@ namespace BinDI
         
         public static void TryInstall(IContainerBuilder builder)
         {
+            ScopedDisposable.TryInstall(builder);
             if (builder.Exists(typeof( BinDiOptions ), findParentScopes: true)) return;
             builder.Register<BinDiOptions>(Lifetime.Singleton);
         }
@@ -890,7 +970,7 @@ namespace BinDI
         public static IScopedObjectResolver CreateScopeWithBinDi(this IObjectResolver scope, params object[] targetScopes)
         {
             var registrationBinder = scope.Resolve<RegistrationBinder>();
-            return scope.CreateScope(builder =>
+            return scope.CreateChildScope(builder =>
             {
                 registrationBinder.TryBind(builder, GlobalScope.Default);
                 foreach (var targetScope in targetScopes)
@@ -1120,7 +1200,7 @@ namespace BinDI
         
         void CreateConnectionScope<T>(T publisherOrSubscriber, IObjectResolver parentScope)
         {
-            parentScope.CreateScope(connectionScopeBuilder => ConfigureConnectionScope(publisherOrSubscriber, parentScope, connectionScopeBuilder));
+            parentScope.CreateChildScope(connectionScopeBuilder => ConfigureConnectionScope(publisherOrSubscriber, parentScope, connectionScopeBuilder));
         }
         
         void ConfigureConnectionScope<T>(T publisherOrSubscriber, IObjectResolver parentScope, IContainerBuilder connectionScopeBuilder)
@@ -1131,7 +1211,7 @@ namespace BinDI
                 .Where(connection => connection != null)
                 .ToArray();
             if (connections.Length <= 0) return;
-            connectionScopeBuilder.RegisterDisposeCallback(_ => Disconnect(connections));
+            connectionScopeBuilder.RegisterBuildCallback(connectionScope => connectionScope.Resolve<IScopedDisposable>().AddRange(connections));
         }
         
         IEnumerable<IDisposable> GetPublishToConnections<T>(IObjectResolver parentScope, T publisherOrSubscriber, Type publisherOrSubscriberType)
@@ -1160,11 +1240,6 @@ namespace BinDI
                     .GetSubscribeFromConnection(publisherOrSubscriberType, i)
                     .TryConnect(parentScope, publisherOrSubscriber, _connectionService);
             }
-        }
-        
-        static void Disconnect(IDisposable[] connections)
-        {
-            foreach (var connection in connections) connection.Dispose();
         }
         
         public static void TryInstall(IContainerBuilder builder)
@@ -1201,7 +1276,7 @@ namespace BinDI
         public void Build(GameObject gameObject)
         {
             if (gameObject == null) return;
-            _scope.CreateScope(builder => Build(builder, gameObject)).AddTo(gameObject);
+            _scope.CreateChildScope(builder => Build(builder, gameObject)).AddTo(gameObject);
         }
         
         public void Build(IContainerBuilder builder, GameObject gameObject)
@@ -1227,7 +1302,7 @@ namespace BinDI
         {
             builder.RegisterBuildCallback(CreateNewScope);
             return;
-            void CreateNewScope(IObjectResolver scope) => scope.CreateScope(ConfigureNewScope);
+            void CreateNewScope(IObjectResolver scope) => scope.CreateChildScope(ConfigureNewScope);
             void ConfigureNewScope(IContainerBuilder newScopeBuilder) => Build(newScopeBuilder, gameObject);
         }
         
@@ -1255,7 +1330,7 @@ namespace BinDI
         {
             if (prefab == null) return null;
             var instance = UnityObject.Instantiate(prefab, parent);
-            _scope.CreateScope(builder => ConfigureScope(builder, install, instance.gameObject)).AddTo(instance);
+            _scope.CreateChildScope(builder => ConfigureScope(builder, install, instance.gameObject)).AddTo(instance);
             return instance;
         }
         
@@ -1263,7 +1338,7 @@ namespace BinDI
         {
             if (prefab == null) return null;
             var instance = UnityObject.Instantiate(prefab, parent);
-            _scope.CreateScope(builder => ConfigureScope(builder, install, instance)).AddTo(instance);
+            _scope.CreateChildScope(builder => ConfigureScope(builder, install, instance)).AddTo(instance);
             return instance;
         }
         
