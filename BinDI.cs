@@ -1014,7 +1014,7 @@ namespace BinDI
             EntryPointsBuilder.EnsureDispatcherRegistered(builder);
             RegisterGlobalScopeModules(builder, _binDiOptions.DomainRegistrationLogEnabled ? scopedGameObject.name : default);
             scopedGameObject.GetComponents(_getComponentsBuffer);
-            for (var i = 0; i < _getComponentsBuffer.Count; i++) TryRegisterScopedModules(builder, _getComponentsBuffer[i]);
+            for (var i = 0; i < _getComponentsBuffer.Count; i++) TryRegisterScopedModules(builder, _getComponentsBuffer[i].GetType());
         }
         
         void RegisterGlobalScopeModules(IContainerBuilder builder, string scopeName)
@@ -1283,7 +1283,7 @@ namespace BinDI
         {
             if (gameObject == null) return;
             gameObject.GetComponents(_getComponentsBuffer);
-            for (var i = 0; i < _getComponentsBuffer.Count; i++) _registrationBinder.TryBind(builder, _getComponentsBuffer[i]);
+            for (var i = 0; i < _getComponentsBuffer.Count; i++) _registrationBinder.TryBind(builder, _getComponentsBuffer[i].GetType());
             for (var i = 0; i < _getComponentsBuffer.Count; i++) _connectionBinder.TryBind(builder, _getComponentsBuffer[i]);
             var transform = gameObject.transform;
             for (var i = 0; i < transform.childCount; i++) TryBuildChild(builder, transform.GetChild(i));
