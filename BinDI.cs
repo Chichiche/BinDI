@@ -152,14 +152,16 @@ namespace BinDI
     
     public static class BinDiInstaller
     {
-        public static ContainerBuilder RegisterBinDi(this ContainerBuilder builder)
+        public static ContainerBuilder RegisterBinDi(this ContainerBuilder builder, BinDiOptions options = null)
         {
+            if (options != null) builder.RegisterInstance(options);
             PrefabBuilder.TryInstall(builder);
             return builder;
         }
         
-        public static IContainerBuilder RegisterBinDi(this IContainerBuilder builder)
+        public static IContainerBuilder RegisterBinDi(this IContainerBuilder builder, BinDiOptions options = null)
         {
+            if (options != null) builder.RegisterInstance(options);
             PrefabBuilder.TryInstall(builder);
             return builder;
         }
@@ -324,7 +326,7 @@ namespace BinDI
         public IDisposable TryConnect<T>(IObjectResolver scope, T publisherOrSubscriber, ConnectionService connectionService)
         {
             if (! scope.TryResolve(_subscriberType, out var resolvedSubscriber)) return null;
-            if (publisherOrSubscriber is IPublisher publisher && resolvedSubscriber is ISubscriber subscriber) return publisher.Subscribe(subscriber);
+            if (publisherOrSubscriber is IPublisher publisher && resolvedSubscriber is ISubscriber subscriber) return connectionService.ConnectPubSub(publisher, subscriber);
             if (connectionService.TryGetGenericArgument(_subscriberType, typeof( ISubscriber<> ), out var valueType)) return connectionService.ConnectValuePubSub(valueType, publisherOrSubscriber, resolvedSubscriber);
 #if BINDI_UNITASK_ENABLED
             if (publisherOrSubscriber is IAsyncPublisher asyncPublisher && resolvedSubscriber is IAsyncSubscriber asyncSubscriber) return asyncPublisher.Subscribe(asyncSubscriber);
@@ -347,7 +349,7 @@ namespace BinDI
         public IDisposable TryConnect<T>(IObjectResolver scope, T publisherOrSubscriber, ConnectionService connectionService)
         {
             if (! scope.TryResolve(_publisherType, out var resolvedPublisher)) return null;
-            if (resolvedPublisher is IPublisher publisher && publisherOrSubscriber is ISubscriber subscriber) return publisher.Subscribe(subscriber);
+            if (resolvedPublisher is IPublisher publisher && publisherOrSubscriber is ISubscriber subscriber) return connectionService.ConnectPubSub(publisher, subscriber);
             if (connectionService.TryGetGenericArgument(_publisherType, typeof( IPublisher<> ), out var valueType)) return connectionService.ConnectValuePubSub(valueType, resolvedPublisher, publisherOrSubscriber);
 #if BINDI_UNITASK_ENABLED
             if (resolvedPublisher is IAsyncPublisher asyncPublisher && publisherOrSubscriber is IAsyncSubscriber asyncSubscriber) return asyncPublisher.Subscribe(asyncSubscriber);
@@ -770,6 +772,7 @@ namespace BinDI
             "UniRx,",
             "UniTask,",
             "UniTask.",
+            "BinDi,"
         };
         
         readonly string[] _assemblyNames;
@@ -889,6 +892,7 @@ namespace BinDI
             var registrationBinder = scope.Resolve<RegistrationBinder>();
             return scope.CreateScope(builder =>
             {
+                registrationBinder.TryBind(builder, GlobalScope.Default);
                 foreach (var targetScope in targetScopes)
                 {
                     registrationBinder.TryBind(builder, targetScope);
@@ -902,7 +906,7 @@ namespace BinDI
         readonly List<MonoBehaviour> _getComponentsBuffer = new( 16 );
         readonly BinDiOptions _binDiOptions;
         readonly DomainRegistrationProvider _registrationProvider;
-        readonly FieldInfo _concreteTypeField = typeof( DomainRegistration ).GetField("_concreteType");
+        readonly FieldInfo _concreteTypeField = typeof( DomainRegistration ).GetField("_concreteType", BindingFlags.NonPublic | BindingFlags.Instance);
         
         public RegistrationBinder(BinDiOptions binDiOptions, DomainRegistrationProvider registrationProvider)
         {
@@ -1053,6 +1057,11 @@ namespace BinDI
             }
             genericArgument = default;
             return false;
+        }
+        
+        public IDisposable ConnectPubSub(IPublisher publisher, ISubscriber subscriber)
+        {
+            return Connect(publisher, subscriber, publisher.GetType().GetMethod("Subscribe"));
         }
         
         public IDisposable ConnectValuePubSub<TPublisher, TSubscriber>(Type valueType, TPublisher publisher, TSubscriber subscriber)
