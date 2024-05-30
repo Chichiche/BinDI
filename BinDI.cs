@@ -1,12 +1,12 @@
 // https://github.com/Chichiche/BinDI
 
-//#undef BINDI_SUPPORT_VCONTAINER
-
-#undef BINDI_SUPPORT_R3
-#undef BINDI_SUPPORT_UNIRX
-#undef BINDI_SUPPORT_UNITASK
-#undef BINDI_SUPPORT_ADDRESSABLE
-#undef UNITY_EDITOR
+// ReSharper disable RedundantUsingDirective
+// #undef BINDI_SUPPORT_VCONTAINER
+// #undef BINDI_SUPPORT_R3
+// #undef BINDI_SUPPORT_UNIRX
+// #undef BINDI_SUPPORT_UNITASK
+// #undef BINDI_SUPPORT_ADDRESSABLE
+// #undef UNITY_EDITOR
 
 #if BINDI_SUPPORT_VCONTAINER
 using VContainer;
@@ -78,17 +78,17 @@ SOFTWARE.
     
     #region Installation
     
+#if BINDI_SUPPORT_VCONTAINER
     public static class BinDiInstaller
     {
-#if BINDI_SUPPORT_VCONTAINER
         public static T RegisterBinDi<T>(this T builder, BinDiOptions options = null) where T : IContainerBuilder
         {
             if (options != null) builder.RegisterInstance(options);
             PrefabBuilder.TryInstall(builder);
             return builder;
         }
-#endif
     }
+#endif
     
     public sealed class BinDiOptions
     {
@@ -132,24 +132,6 @@ SOFTWARE.
         {
             if (_disposed) return;
             _list.Remove(_value);
-            _disposed = true;
-        }
-    }
-    
-    public sealed class ActionDisposable : IDisposable
-    {
-        readonly Action _action;
-        bool _disposed;
-        
-        public ActionDisposable(Action action)
-        {
-            _action = action;
-        }
-        
-        public void Dispose()
-        {
-            if (_disposed) return;
-            _action?.Invoke();
             _disposed = true;
         }
     }
@@ -235,6 +217,7 @@ SOFTWARE.
 #endif
     }
     
+#if BINDI_SUPPORT_VCONTAINER
     public sealed class OnDestroyTrigger : MonoBehaviour
     {
         public Action OnDestroyHandler;
@@ -244,8 +227,9 @@ SOFTWARE.
             OnDestroyHandler?.Invoke();
         }
     }
+#endif
     
-    public static class DisposableExtensions
+    public static class DisposableUtil
     {
         public static T AddTo<T>(this T disposable, IScopedDisposable scopedDisposable) where T : IDisposable
         {
@@ -254,15 +238,7 @@ SOFTWARE.
         }
         
 #if BINDI_SUPPORT_VCONTAINER
-        public static IScopedObjectResolver CreateDisposableLinkedChildScope(this IObjectResolver scope, Action<IContainerBuilder> installation = null)
-        {
-            var childScope = scope.CreateScope(installation);
-            childScope.AddTo(scope);
-            return childScope;
-        }
-#endif
-        
-#if BINDI_SUPPORT_VCONTAINER
+        // ReSharper disable once MemberCanBePrivate.Global
         public static T AddTo<T>(this T disposable, IObjectResolver scope) where T : IDisposable
         {
             if (! scope.TryResolve<IScopedDisposable>(out var scopedDisposable))
@@ -273,25 +249,35 @@ SOFTWARE.
             return disposable;
         }
 #endif
+        
+#if BINDI_SUPPORT_VCONTAINER
+        public static IScopedObjectResolver CreateDisposableLinkedChildScope(this IObjectResolver scope, Action<IContainerBuilder> installation = null)
+        {
+            var childScope = scope.CreateScope(installation);
+            childScope.AddTo(scope);
+            return childScope;
+        }
+#endif
     }
     
     #endregion Disposables
     
     #region EditorWindow
     
+    /*
 #if UNITY_EDITOR && BINDI_SUPPORT_VCONTAINER
     public sealed class BinDiWindow : EditorWindow
     {
         [SerializeField] BinDiHeader _header;
         [SerializeField] BinDiTree _tree;
-        
+    
         [MenuItem("Window/" + nameof( BinDI ))]
         public static void ShowWindow()
         {
             var window = GetWindow<BinDiWindow>();
             window.Show();
         }
-        
+    
         void OnEnable()
         {
             _header ??= new BinDiHeader();
@@ -299,7 +285,7 @@ SOFTWARE.
             _tree ??= new BinDiTree();
             _tree.Refresh(_header);
         }
-        
+    
         void OnGUI()
         {
             _tree?.View.OnGUI(new Rect(0, 0, position.width, position.height));
@@ -330,10 +316,10 @@ SOFTWARE.
                 canSort = false,
             },
         };
-        
+    
         [SerializeField] MultiColumnHeaderState _state;
         public MultiColumnHeader View { get; private set; }
-        
+    
         public void Refresh()
         {
             _state ??= new MultiColumnHeaderState(_columns);
@@ -346,7 +332,7 @@ SOFTWARE.
     {
         [SerializeField] TreeViewState _treeViewState;
         public BinDiTreeView View;
-        
+    
         public void Refresh(BinDiHeader header)
         {
             _treeViewState ??= new TreeViewState();
@@ -364,21 +350,21 @@ SOFTWARE.
         readonly FieldInfo _subscriberTypeField = typeof( PublishToAttribute ).GetField("_subscriberType", BindingFlags.Instance | BindingFlags.NonPublic);
         readonly FieldInfo _publisherTypeField = typeof( SubscribeFromAttribute ).GetField("_publisherType", BindingFlags.Instance | BindingFlags.NonPublic);
         readonly Dictionary<Type, List<Registration>> _scopedRegistrationsMap = new();
-        
+    
         public BinDiTreeView(TreeViewState state, MultiColumnHeader multiColumnHeader) : base(state, multiColumnHeader)
         {
             columnIndexForTreeFoldouts = 1;
             showAlternatingRowBackgrounds = true;
         }
-        
+    
         public void Refresh()
         {
             var builder = new ContainerBuilder();
             builder.RegisterBinDi();
             using var refreshScope = builder.Build();
-            var domainRegistrationProvider = refreshScope.Resolve<RegistrationProvider>();
-            var domainConnectionProvider = refreshScope.Resolve<DomainConnectionProvider>();
-            var scopedRegistrationListMap = (Dictionary<Type, ReadOnlyCollection<DomainRegistration>>)_scopedRegistrationListMapField.GetValue(domainRegistrationProvider);
+            var registrationProvider = refreshScope.Resolve<RegistrationProvider>();
+            var connectionProvider = refreshScope.Resolve<ConnectionProvider>();
+            var scopedRegistrationListMap = (Dictionary<Type, ReadOnlyCollection<DomainRegistration>>)_scopedRegistrationListMapField.GetValue(registrationProvider);
             _scopedRegistrationsMap.Clear();
             foreach (var scopeType in scopedRegistrationListMap.Keys)
             {
@@ -387,23 +373,23 @@ SOFTWARE.
                 {
                     var registrationType = (Type)_concreteTypeField.GetValue(domainRegistration);
                     var publisherTypes = Enumerable
-                        .Range(0, domainConnectionProvider.GetSubscribeFromConnectionCount(registrationType))
-                        .Select(i => domainConnectionProvider.GetSubscribeFromConnection(registrationType, i))
+                        .Range(0, connectionProvider.GetSubscribeFromConnectionCount(registrationType))
+                        .Select(i => connectionProvider.GetSubscribeFromConnection(registrationType, i))
                         .Select(attribute => (Type)_publisherTypeField.GetValue(attribute));
                     var subscriberTypes = Enumerable
-                        .Range(0, domainConnectionProvider.GetPublishToConnectionCount(registrationType))
-                        .Select(i => domainConnectionProvider.GetPublishToConnection(registrationType, i))
+                        .Range(0, connectionProvider.GetPublishToConnectionCount(registrationType))
+                        .Select(i => connectionProvider.GetPublishToConnection(registrationType, i))
                         .Select(attribute => (Type)_subscriberTypeField.GetValue(attribute));
                     _scopedRegistrationsMap[scopeType].Add(new Registration(registrationType.Name, publisherTypes, subscriberTypes));
                 }
             }
         }
-        
+    
         protected override TreeViewItem BuildRoot()
         {
             var root = new BinDiTreeViewItem { id = 0, depth = -1 };
             var id = 1;
-            
+    
             foreach (var (scope, registrations) in _scopedRegistrationsMap)
             {
                 var scopeItem = new BinDiTreeViewItem { id = id++, displayName = scope.Name, ItemType = ItemType.Scope, Script = FindScript(scope.Name) };
@@ -413,7 +399,7 @@ SOFTWARE.
                     var registrationScript = registration.TypeInfo.Script;
                     var registrationItem = new BinDiTreeViewItem { id = id++, displayName = registration.TypeInfo.TypeName, ItemType = ItemType.Registration, Script = registrationScript, };
                     scopeItem.AddChild(registrationItem);
-                    
+    
                     if (registration.Connection.Publishers.Length > 0)
                     {
                         foreach (var publisherInfo in registration.Connection.Publishers)
@@ -423,7 +409,7 @@ SOFTWARE.
                             registrationItem.AddChild(publisherItem);
                         }
                     }
-                    
+    
                     if (registration.Connection.Subscribers.Length > 0)
                     {
                         foreach (var subscriberInfo in registration.Connection.Subscribers)
@@ -435,11 +421,11 @@ SOFTWARE.
                     }
                 }
             }
-            
+    
             SetupDepthsFromParentsAndChildren(root);
             return root;
         }
-        
+    
         protected override void RowGUI(RowGUIArgs args)
         {
             for (var i = 0; i < args.GetNumVisibleColumns(); i++)
@@ -447,7 +433,7 @@ SOFTWARE.
                 var item = (BinDiTreeViewItem)args.item;
                 var cellRect = args.GetCellRect(i);
                 var columnIndex = args.GetColumn(i);
-                
+    
                 switch (columnIndex)
                 {
                     case 0:
@@ -463,7 +449,7 @@ SOFTWARE.
                 }
             }
         }
-        
+    
         enum ItemType
         {
             Scope,
@@ -471,49 +457,49 @@ SOFTWARE.
             SubscribeFrom,
             PublishTo,
         }
-        
+    
         sealed class BinDiTreeViewItem : TreeViewItem
         {
             public ItemType ItemType;
             public MonoScript Script;
         }
-        
+    
         sealed class Registration
         {
             public readonly TypeInfo TypeInfo;
             public readonly Connection Connection;
-            
+    
             public Registration(string registrationTypeName, IEnumerable<Type> publisherTypes, IEnumerable<Type> subscriberTypes)
             {
                 TypeInfo = new TypeInfo(registrationTypeName);
                 Connection = new Connection(publisherTypes, subscriberTypes);
             }
         }
-        
+    
         sealed class TypeInfo
         {
             public readonly string TypeName;
             public readonly MonoScript Script;
-            
+    
             public TypeInfo(string typeName)
             {
                 TypeName = typeName;
                 Script = FindScript(typeName);
             }
         }
-        
+    
         sealed class Connection
         {
             public readonly TypeInfo[] Publishers;
             public readonly TypeInfo[] Subscribers;
-            
+    
             public Connection(IEnumerable<Type> publisherTypes, IEnumerable<Type> subscriberTypes)
             {
                 Publishers = publisherTypes.Select(type => new TypeInfo(type.Name)).ToArray();
                 Subscribers = subscriberTypes.Select(type => new TypeInfo(type.Name)).ToArray();
             }
         }
-        
+    
         static MonoScript FindScript(string scriptName)
         {
             return AssetDatabase
@@ -525,15 +511,16 @@ SOFTWARE.
         }
     }
 #endif
+    */
     
     #endregion EditorWindow
     
     #region Registration Attributes
     
+#if BINDI_SUPPORT_VCONTAINER
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     public sealed class RegisterToAttribute : Attribute
     {
-#if BINDI_SUPPORT_VCONTAINER
         public object Scope { get; }
         public Lifetime Lifetime { get; }
         
@@ -542,13 +529,13 @@ SOFTWARE.
             Scope = scope;
             Lifetime = lifetime;
         }
-#endif
     }
+#endif
     
+#if BINDI_SUPPORT_VCONTAINER
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class RegisterToGlobalAttribute : Attribute
     {
-#if BINDI_SUPPORT_VCONTAINER
         public object Scope => GlobalScope.Default;
         public Lifetime Lifetime { get; }
         
@@ -556,13 +543,13 @@ SOFTWARE.
         {
             Lifetime = lifetime;
         }
-#endif
     }
+#endif
     
+#if BINDI_SUPPORT_VCONTAINER && BINDI_SUPPORT_ADDRESSABLE
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     public sealed class RegisterAddressableToAttribute : Attribute
     {
-#if BINDI_SUPPORT_VCONTAINER && BINDI_SUPPORT_ADDRESSABLE
         public object Scope { get; }
         public Lifetime Lifetime => Lifetime.Singleton;
         public readonly string Address;
@@ -572,13 +559,13 @@ SOFTWARE.
             Scope = scope;
             Address = address;
         }
-#endif
     }
+#endif
     
+#if BINDI_SUPPORT_VCONTAINER && BINDI_SUPPORT_ADDRESSABLE
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class RegisterAddressableToGlobalAttribute : Attribute
     {
-#if BINDI_SUPPORT_VCONTAINER && BINDI_SUPPORT_ADDRESSABLE
         public object Scope => GlobalScope.Default;
         public Lifetime Lifetime => Lifetime.Singleton;
         public readonly string Address;
@@ -587,11 +574,13 @@ SOFTWARE.
         {
             Address = address;
         }
-#endif
     }
+#endif
     
+#if BINDI_SUPPORT_VCONTAINER
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class ScopedComponentAttribute : Attribute { }
+#endif
     
     #endregion Registration Attributes
     
@@ -638,6 +627,7 @@ SOFTWARE.
             _assemblyNames = _defaultWithoutAssemblyNames.Concat(customWithoutAssemblyNames).ToArray();
         }
         
+        // ReSharper disable once UnusedMember.Local
         WithoutRegistrationAssemblies()
         {
             _assemblyNames = _defaultWithoutAssemblyNames;
@@ -700,9 +690,9 @@ SOFTWARE.
 #endif
     }
     
+#if BINDI_SUPPORT_VCONTAINER
     public sealed class RegistrationProvider
     {
-#if BINDI_SUPPORT_VCONTAINER
         static readonly ReadOnlyCollection<IRegistration> EmptyRegistrations = new( Array.Empty<IRegistration>() );
         readonly Dictionary<object, List<IRegistration>> _scopedRegistrationListSourceMap = new() { { GlobalScope.Default, new List<IRegistration>() } };
         readonly Dictionary<object, ReadOnlyCollection<IRegistration>> _scopedRegistrationListMap;
@@ -761,24 +751,26 @@ SOFTWARE.
             builder.Register<RegistrationProvider>(Lifetime.Singleton);
             AppDomainProvider.TryInstall(builder);
         }
-#endif
     }
+#endif
     
+#if BINDI_SUPPORT_VCONTAINER
     public sealed class GlobalScope
     {
         public static readonly GlobalScope Default = new();
     }
+#endif
     
+#if BINDI_SUPPORT_VCONTAINER
     public interface IRegistration
     {
-#if BINDI_SUPPORT_VCONTAINER
         bool TryRegister(IContainerBuilder builder);
-#endif
     }
+#endif
     
+#if BINDI_SUPPORT_VCONTAINER
     public sealed class DomainRegistration : IRegistration
     {
-#if BINDI_SUPPORT_VCONTAINER
         readonly Type _type;
         readonly Lifetime _lifetime;
         
@@ -795,12 +787,12 @@ SOFTWARE.
             builder.Register(_type, _lifetime).AsSelf().AsImplementedInterfaces();
             return true;
         }
-#endif
     }
+#endif
     
+#if BINDI_SUPPORT_VCONTAINER && BINDI_SUPPORT_ADDRESSABLE
     public sealed class AddressableRegistration : IRegistration
     {
-#if BINDI_SUPPORT_VCONTAINER && BINDI_SUPPORT_ADDRESSABLE
         readonly Type _type;
         readonly string _address;
         
@@ -858,20 +850,14 @@ SOFTWARE.
         {
             builder.RegisterInstance(operation.Result).AsSelf().AsImplementedInterfaces();
         }
-#else
-        public bool TryRegister(IContainerBuilder builder)
-        {
-            return false;
-        }
-#endif
     }
+#endif
     
+#if BINDI_SUPPORT_VCONTAINER
     public sealed class RegistrationBinder
     {
-#if BINDI_SUPPORT_VCONTAINER
         readonly BinDiOptions _binDiOptions;
         readonly RegistrationProvider _registrationProvider;
-        readonly FieldInfo _concreteTypeField = typeof( DomainRegistration ).GetField("_concreteType", BindingFlags.NonPublic | BindingFlags.Instance);
         
         public RegistrationBinder(BinDiOptions binDiOptions, RegistrationProvider registrationProvider)
         {
@@ -906,7 +892,7 @@ SOFTWARE.
         void TryRegister(IContainerBuilder builder, IRegistration registration, string scopeName)
         {
             if (! registration.TryRegister(builder)) return;
-            if (_binDiOptions.DomainRegistrationLogEnabled) Debug.Log($"{nameof( BinDI )} registered [{_concreteTypeField.GetValue(registration)}] to [{scopeName}].");
+            if (_binDiOptions.DomainRegistrationLogEnabled) Debug.Log($"{nameof( BinDI )} registered [{registration.GetType().GetField("_type", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(registration)}] to [{scopeName}].");
         }
         
         public static void TryInstall(IContainerBuilder builder)
@@ -916,12 +902,12 @@ SOFTWARE.
             BinDiOptions.TryInstall(builder);
             RegistrationProvider.TryInstall(builder);
         }
-#endif
     }
+#endif
     
+#if BINDI_SUPPORT_VCONTAINER
     public static class RegistrationUtil
     {
-#if BINDI_SUPPORT_VCONTAINER
         public static IScopedObjectResolver CreateBinDiScope(this IObjectResolver scope, params object[] targetScopes)
         {
             if (! scope.TryResolve<RegistrationBinder>(out var registrationBinder))
@@ -937,8 +923,8 @@ SOFTWARE.
                 }
             });
         }
-#endif
     }
+#endif
     
     #endregion Registration Modules
     
@@ -954,19 +940,19 @@ SOFTWARE.
         void Publish(T value);
     }
     
+#if BINDI_SUPPORT_UNITASK
     public interface IAsyncPublishable
     {
-#if BINDI_SUPPORT_UNITASK
         UniTask PublishAsync();
-#endif
     }
+#endif
     
+#if BINDI_SUPPORT_UNITASK
     public interface IAsyncPublishable<in T>
     {
-#if BINDI_SUPPORT_UNITASK
         UniTask PublishAsync(T value);
-#endif
     }
+#endif
     
     #endregion Publishable Interfaces
     
@@ -988,15 +974,19 @@ SOFTWARE.
         T Value { get; }
     }
     
+#if BINDI_SUPPORT_UNITASK
     public interface IAsyncSubscribable
     {
         IDisposable Subscribe(IAsyncPublishable asyncPublishable);
     }
+#endif
     
+#if BINDI_SUPPORT_UNITASK
     public interface IAsyncSubscribable<out T>
     {
         IDisposable Subscribe(IAsyncPublishable<T> asyncPublishable);
     }
+#endif
     
     #endregion Subscribable Interfaces
     
@@ -1034,23 +1024,23 @@ SOFTWARE.
         readonly Subject<Unit> _subject = new();
         Observer<Unit> _observer;
         bool _disposed;
-    
+        
         public Observable<Unit> AsObservable => _subject;
         public Observer<Unit> AsObserver => _observer ??= _subject.AsObserver();
-    
+        
         public void Publish()
         {
             if (_disposed) return;
             _subject.OnNext(Unit.Default);
         }
-    
+        
         public IDisposable Subscribe(IPublishable publishable)
         {
             return ! _disposed
                 ? _subject.Subscribe(publishable, static (_, p) => p.Publish())
                 : Disposable.Empty;
         }
-    
+        
         public void Dispose()
         {
             if (_disposed) return;
@@ -1120,30 +1110,30 @@ SOFTWARE.
         readonly Subject<T> _subject = new();
         Observer<T> _observer;
         bool _disposed;
-    
+        
         public Observable<T> AsObservable => _subject;
         public Observer<T> AsObserver => _observer ??= _subject.AsObserver();
-    
+        
         public void Publish(T value)
         {
             if (_disposed) return;
             _subject.OnNext(value);
         }
-    
+        
         public IDisposable Subscribe(IPublishable publishable)
         {
             return ! _disposed
                 ? _subject.Subscribe(publishable, static (_, p) => p.Publish())
                 : Disposable.Empty;
         }
-    
+        
         public IDisposable Subscribe(IPublishable<T> publishable)
         {
             return ! _disposed
                 ? _subject.Subscribe(publishable, static (value, p) => p.Publish(value))
                 : Disposable.Empty;
         }
-    
+        
         public void Dispose()
         {
             if (_disposed) return;
@@ -1222,6 +1212,7 @@ SOFTWARE.
 #endif
     }
     
+#if BINDI_SUPPORT_UNITASK
     public class AsyncBroker : IAsyncPublishable, IAsyncSubscribable, IDisposable
     {
         static readonly Stack<List<IAsyncPublishable>> _subscriberListPool = new();
@@ -1235,14 +1226,12 @@ SOFTWARE.
                 : new List<IAsyncPublishable>(16);
         }
         
-#if BINDI_SUPPORT_UNITASK
         public UniTask PublishAsync()
         {
             return ! _disposed
                 ? UniTask.WhenAll(_subscribers.Select(subscriber => subscriber.PublishAsync()))
                 : UniTask.CompletedTask;
         }
-#endif
         
         public IDisposable Subscribe(IAsyncPublishable asyncPublishable)
         {
@@ -1259,21 +1248,20 @@ SOFTWARE.
             _subscriberListPool.Push(_subscribers);
         }
     }
+#endif
     
-    
+#if BINDI_SUPPORT_UNITASK
     public class AsyncBroker<T> : IAsyncPublishable<T>, IAsyncSubscribable<T>, IDisposable
     {
         readonly List<IAsyncPublishable<T>> _subscribers = new();
         bool _disposed;
         
-#if BINDI_SUPPORT_UNITASK
         public UniTask PublishAsync(T value)
         {
             return ! _disposed
                 ? UniTask.WhenAll(_subscribers.Select(subscriber => subscriber.PublishAsync(value)))
                 : UniTask.CompletedTask;
         }
-#endif
         
         public IDisposable Subscribe(IAsyncPublishable<T> asyncPublishable)
         {
@@ -1289,6 +1277,7 @@ SOFTWARE.
             _subscribers.Clear();
         }
     }
+#endif
     
     #endregion Brokers
     
@@ -1300,13 +1289,13 @@ SOFTWARE.
         readonly ReactiveProperty<T> _property = new();
         Observer<T> _observer;
         bool _disposed;
-    
+        
         public Observable<T> AsObservable => _property;
         public Observer<T> AsObserver => _observer ??= _property.AsObserver();
-    
+        
         public bool HasValue { get; private set; }
         public T Value => _property.Value;
-    
+        
         public void Publish(T value)
         {
             if (_disposed) return;
@@ -1314,23 +1303,23 @@ SOFTWARE.
             _property.Value = value;
             OnPublished(value);
         }
-    
+        
         protected virtual void OnPublished(T value) { }
-    
+        
         public IDisposable Subscribe(IPublishable publishable)
         {
             return ! _disposed
                 ? _property.Subscribe(publishable, static (_, p) => p.Publish())
                 : Disposable.Empty;
         }
-    
+        
         public IDisposable Subscribe(IPublishable<T> publishable)
         {
             return ! _disposed
                 ? _property.Subscribe(publishable, static (value, p) => p.Publish(value))
                 : Disposable.Empty;
         }
-    
+        
         public void Dispose()
         {
             if (_disposed) return;
@@ -1418,33 +1407,33 @@ SOFTWARE.
 #if BINDI_SUPPORT_R3
         readonly ReactiveProperty<T> _property = new();
         bool _disposed;
-    
+        
         public Observable<T> AsObservable => _property;
-    
+        
         public bool HasValue { get; private set; }
         public T Value => _property.Value;
-    
+        
         protected void Publish(T value)
         {
             if (_disposed) return;
             HasValue = true;
             _property.Value = value;
         }
-    
+        
         public IDisposable Subscribe(IPublishable publishable)
         {
             return ! _disposed
                 ? _property.Subscribe(publishable, static (_, p) => p.Publish())
                 : Disposable.Empty;
         }
-    
+        
         public IDisposable Subscribe(IPublishable<T> publishable)
         {
             if (_disposed) return Disposable.Empty;
             if (HasValue) publishable.Publish(Value);
             return _property.Subscribe(publishable, static (value, p) => p.Publish(value));
         }
-    
+        
         void IDisposable.Dispose()
         {
             if (_disposed) return;
@@ -1559,65 +1548,6 @@ SOFTWARE.
     
     #region Connection Modules
     
-    public static class ConnectionUtil
-    {
-        public static IDisposable Subscribe(this ISubscribable subscribable, Action publish)
-        {
-            return subscribable.Subscribe(new ActionPublishable(publish));
-        }
-        
-        public static IDisposable Subscribe<T>(this ISubscribable<T> subscribable, Action<T> publish)
-        {
-            return subscribable.Subscribe(new ActionPublishable<T>(publish));
-        }
-        
-#if BINDI_SUPPORT_R3
-        public static IDisposable Subscribe<T>(this Observable<T> observable, IPublishable publishable)
-        {
-            return observable.Subscribe(publishable, static (_, s) => s.Publish());
-        }
-#endif
-        
-#if BINDI_SUPPORT_R3
-        public static IDisposable Subscribe<T>(this Observable<T> observable, IPublishable<T> publishable)
-        {
-            return observable.Subscribe(publishable, static (v, s) => s.Publish(v));
-        }
-#endif
-        
-#if BINDI_SUPPORT_R3
-        public static IDisposable SubscribeWithState<TValue, TState>(this Observable<TValue> observable, TState state, Action<TValue, TState> onNext)
-        {
-            return observable.Subscribe((state, onNext), static (value, t) => t.onNext(value, t.state));
-        }
-#endif
-        
-#if !BINDI_SUPPORT_R3 && BINDI_SUPPORT_UNIRX
-        public static IDisposable Subscribe<T>(this IObservable<T> observable, IPublishable publishable)
-        {
-            return observable.SubscribeWithState(publishable, static (_, s) => s.Publish());
-        }
-#endif
-        
-#if !BINDI_SUPPORT_R3 && BINDI_SUPPORT_UNIRX
-        public static IDisposable Subscribe<T>(this IObservable<T> observable, IPublishable<T> publishable)
-        {
-            return observable.SubscribeWithState(publishable, static (v, s) => s.Publish(v));
-        }
-#endif
-        
-#if !BINDI_SUPPORT_R3 && BINDI_SUPPORT_UNIRX
-        public static IDisposable Subscribe<TValue, TState>(this IObservable<TValue> observable, TState state, Action<TValue, TState> onNext)
-        {
-            return observable.SubscribeWithState((state, onNext), static (value, t) => t.onNext(value, t.state));
-        }
-#endif
-    }
-    
-    #endregion
-    
-    #region Managers
-    
     public sealed class ConnectionProvider
     {
         readonly ReadOnlyCollection<Type> _emptyTypes = new( Array.Empty<Type>() );
@@ -1694,6 +1624,7 @@ SOFTWARE.
 #endif
     }
     
+#if BINDI_SUPPORT_VCONTAINER
     public sealed class ConnectionBinder
     {
         readonly Type[] _genericParameterArguments = new Type[1];
@@ -1737,7 +1668,7 @@ SOFTWARE.
             if (subscribable is ISubscribable voidSubscribable && publishable is IPublishable voidPublishable) return voidSubscribable.Subscribe(voidPublishable);
             if (TryGetGenericArgument(subscribable.GetType(), typeof( IPublishable<> ), out var valueType)) return ConnectValuePubSub(valueType, subscribable, publishable);
 #if BINDI_SUPPORT_UNITASK
-            if (subscribable is ISubscribable asyncPublisher && publishable is IAsyncPublishable asyncSubscriber) return asyncPublisher.Subscribe(asyncSubscriber);
+            if (subscribable is IAsyncSubscribable asyncSubscribable && publishable is IAsyncPublishable asyncPublishable) return asyncSubscribable.Subscribe(asyncPublishable);
             if (TryGetGenericArgument(subscribable.GetType(), typeof( IAsyncPublishable<> ), out var asyncValueType)) return ConnectAsyncValuePubSub(asyncValueType, subscribable, publishable);
 #endif
             throw new ArgumentException($"Failed to connect [{subscribable}] to [{publishable}].");
@@ -1794,14 +1725,70 @@ SOFTWARE.
             ConnectionProvider.TryInstall(builder);
         }
     }
+#endif
+    
+    public static class ConnectionUtil
+    {
+        public static IDisposable Subscribe(this ISubscribable subscribable, Action publish)
+        {
+            return subscribable.Subscribe(new ActionPublishable(publish));
+        }
+        
+        public static IDisposable Subscribe<T>(this ISubscribable<T> subscribable, Action<T> publish)
+        {
+            return subscribable.Subscribe(new ActionPublishable<T>(publish));
+        }
+        
+#if BINDI_SUPPORT_R3
+        public static IDisposable Subscribe<T>(this Observable<T> observable, IPublishable publishable)
+        {
+            return observable.Subscribe(publishable, static (_, s) => s.Publish());
+        }
+#endif
+        
+#if BINDI_SUPPORT_R3
+        public static IDisposable Subscribe<T>(this Observable<T> observable, IPublishable<T> publishable)
+        {
+            return observable.Subscribe(publishable, static (v, s) => s.Publish(v));
+        }
+#endif
+        
+#if BINDI_SUPPORT_R3
+        public static IDisposable SubscribeWithState<TValue, TState>(this Observable<TValue> observable, TState state, Action<TValue, TState> onNext)
+        {
+            return observable.Subscribe((state, onNext), static (value, t) => t.onNext(value, t.state));
+        }
+#endif
+        
+#if !BINDI_SUPPORT_R3 && BINDI_SUPPORT_UNIRX
+        public static IDisposable Subscribe<T>(this IObservable<T> observable, IPublishable publishable)
+        {
+            return observable.SubscribeWithState(publishable, static (_, s) => s.Publish());
+        }
+#endif
+        
+#if !BINDI_SUPPORT_R3 && BINDI_SUPPORT_UNIRX
+        public static IDisposable Subscribe<T>(this IObservable<T> observable, IPublishable<T> publishable)
+        {
+            return observable.SubscribeWithState(publishable, static (v, s) => s.Publish(v));
+        }
+#endif
+        
+#if !BINDI_SUPPORT_R3 && BINDI_SUPPORT_UNIRX
+        public static IDisposable Subscribe<TValue, TState>(this IObservable<TValue> observable, TState state, Action<TValue, TState> onNext)
+        {
+            return observable.SubscribeWithState((state, onNext), static (value, t) => t.onNext(value, t.state));
+        }
+#endif
+    }
     
     #endregion
     
     #region GameObjectModules
     
+#if BINDI_SUPPORT_VCONTAINER
     public sealed class GameObjectScopeBuilder
     {
-#if BINDI_SUPPORT_VCONTAINER
         readonly List<MonoBehaviour> _getComponentsBuffer = new( 16 );
         readonly RegistrationBinder _registrationBinder;
         readonly ConnectionBinder _connectionBinder;
@@ -1871,12 +1858,12 @@ SOFTWARE.
             RegistrationBinder.TryInstall(builder);
             ConnectionBinder.TryInstall(builder);
         }
-#endif
     }
+#endif
     
+#if BINDI_SUPPORT_VCONTAINER
     public sealed class PrefabBuilder
     {
-#if BINDI_SUPPORT_VCONTAINER
         readonly GameObjectScopeBuilder _gameObjectScopeBuilder;
         readonly IObjectResolver _scope;
         
@@ -1918,8 +1905,8 @@ SOFTWARE.
             builder.Register<PrefabBuilder>(Lifetime.Scoped);
             GameObjectScopeBuilder.TryInstall(builder);
         }
-#endif
     }
+#endif
     
     public static class GameObjectUtil
     {
