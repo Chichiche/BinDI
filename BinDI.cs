@@ -1,22 +1,28 @@
 // https://github.com/Chichiche/BinDI
 
-// #define BINDI_R3_ENABLED
-// #define BINDI_UNITASK_ENABLED
-// #define BINDI_ADDRESSABLE_ENABLED
+#if BINDI_SUPPORT_VCONTAINER
+using VContainer;
+using VContainer.Unity;
+#endif
 
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
 using R3;
-#else
+#elif BINDI_SUPPORT_UNIRX
 using UniRx;
 #endif
 
-#if BINDI_UNITASK_ENABLED
+#if BINDI_SUPPORT_UNITASK
 using Cysharp.Threading.Tasks;
 #endif
 
-#if BINDI_ADDRESSABLE_ENABLED
+#if BINDI_SUPPORT_ADDRESSABLE
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
+#endif
+
+#if UNITY_EDITOR
+using UnityEditor;
+using UnityEditor.IMGUI.Controls;
 #endif
 
 namespace BinDI
@@ -31,12 +37,6 @@ namespace BinDI
     using System.Reflection;
     using UnityEngine;
     using UnityObject = UnityEngine.Object;
-#if UNITY_EDITOR
-    using UnityEditor;
-    using UnityEditor.IMGUI.Controls;
-#endif
-    using VContainer;
-    using VContainer.Unity;
     
     #endregion
     
@@ -68,7 +68,7 @@ namespace BinDI
         void Publish(T value);
     }
     
-#if BINDI_UNITASK_ENABLED
+#if BINDI_SUPPORT_UNITASK
     public interface IAsyncPublisher
     {
         IDisposable Subscribe(IAsyncSubscriber asyncSubscriber);
@@ -113,7 +113,7 @@ namespace BinDI
     
     public static class SubscribeExtensions
     {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
         public static IDisposable Subscribe<T>(this Observable<T> observable, ISubscriber subscriber)
         {
             return observable.Subscribe(subscriber, static (_, s) => s.Publish());
@@ -239,7 +239,7 @@ namespace BinDI
         }
     }
     
-#if BINDI_ADDRESSABLE_ENABLED
+#if BINDI_SUPPORT_ADDRESSABLE
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     public sealed class RegisterAddressableToAttribute : Attribute, IRegistrationAttribute
     {
@@ -340,7 +340,7 @@ namespace BinDI
             if (! scope.TryResolve(_subscriberType, out var resolvedSubscriber)) return null;
             if (publisherOrSubscriber is IPublisher publisher && resolvedSubscriber is ISubscriber subscriber) return connectionService.ConnectPubSub(publisher, subscriber);
             if (connectionService.TryGetGenericArgument(_subscriberType, typeof( ISubscriber<> ), out var valueType)) return connectionService.ConnectValuePubSub(valueType, publisherOrSubscriber, resolvedSubscriber);
-#if BINDI_UNITASK_ENABLED
+#if BINDI_SUPPORT_UNITASK
             if (publisherOrSubscriber is IAsyncPublisher asyncPublisher && resolvedSubscriber is IAsyncSubscriber asyncSubscriber) return asyncPublisher.Subscribe(asyncSubscriber);
             if (connectionService.TryGetGenericArgument(_subscriberType, typeof( IAsyncSubscriber<> ), out var asyncValueType)) return connectionService.ConnectAsyncValuePubSub(asyncValueType, publisherOrSubscriber, resolvedSubscriber);
 #endif
@@ -363,7 +363,7 @@ namespace BinDI
             if (! scope.TryResolve(_publisherType, out var resolvedPublisher)) return null;
             if (resolvedPublisher is IPublisher publisher && publisherOrSubscriber is ISubscriber subscriber) return connectionService.ConnectPubSub(publisher, subscriber);
             if (connectionService.TryGetGenericArgument(_publisherType, typeof( IPublisher<> ), out var valueType)) return connectionService.ConnectValuePubSub(valueType, resolvedPublisher, publisherOrSubscriber);
-#if BINDI_UNITASK_ENABLED
+#if BINDI_SUPPORT_UNITASK
             if (resolvedPublisher is IAsyncPublisher asyncPublisher && publisherOrSubscriber is IAsyncSubscriber asyncSubscriber) return asyncPublisher.Subscribe(asyncSubscriber);
             if (connectionService.TryGetGenericArgument(_publisherType, typeof( IAsyncPublisher<> ), out var asyncValueType)) return connectionService.ConnectAsyncValuePubSub(asyncValueType, resolvedPublisher, publisherOrSubscriber);
 #endif
@@ -380,7 +380,7 @@ namespace BinDI
     
     public class Broker : IPublisher, ISubscriber, IDisposable
     {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
         Observer<Unit> _observer;
         public Observable<Unit> AsObservable => _subject;
         public Observer<Unit> AsObserver => _observer ??= _subject.AsObserver();
@@ -405,7 +405,7 @@ namespace BinDI
             
             IDisposable SubscribeImpl()
             {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
                 return _subject.Subscribe(subscriber, static (_, p) => p.Publish());
 #else
                 return _subject.SubscribeWithState(subscriber, static (_, p) => p.Publish());
@@ -415,7 +415,7 @@ namespace BinDI
         
         public void Dispose()
         {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
             _observer?.Dispose();
 #endif
             _subject?.Dispose();
@@ -425,7 +425,7 @@ namespace BinDI
     
     public class Broker<T> : IPublisher, IPublisher<T>, ISubscriber<T>, IDisposable
     {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
         Observer<T> _observer;
         public Observable<T> AsObservable => _subject;
         public Observer<T> AsObserver => _observer ??= _subject.AsObserver();
@@ -450,7 +450,7 @@ namespace BinDI
             
             IDisposable SubscribeImpl()
             {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
                 return _subject.Subscribe(subscriber, static (_, p) => p.Publish());
 #else
                 return _subject.SubscribeWithState(subscriber, static (_, p) => p.Publish());
@@ -466,7 +466,7 @@ namespace BinDI
             
             IDisposable SubscribeImpl()
             {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
                 return _subject.Subscribe(subscriber, static (value, p) => p.Publish(value));
 #else
                 return _subject.SubscribeWithState(subscriber, static (value, p) => p.Publish(value));
@@ -476,7 +476,7 @@ namespace BinDI
         
         public void Dispose()
         {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
             _observer?.Dispose();
 #endif
             _subject?.Dispose();
@@ -484,8 +484,8 @@ namespace BinDI
         }
     }
     
-#if BINDI_UNITASK_ENABLED
-    public class AsyncChannel : IAsyncPublisher, IAsyncSubscriber, IDisposable
+#if BINDI_SUPPORT_UNITASK
+    public class AsyncBroker : IAsyncPublisher, IAsyncSubscriber, IDisposable
     {
         static readonly Stack<List<IAsyncSubscriber>> _subscriberListPool = new();
         readonly List<IAsyncSubscriber> _subscribers = RentAsyncSubscriberList();
@@ -521,7 +521,7 @@ namespace BinDI
         }
     }
     
-    public class AsyncChannel<T> : IAsyncSubscriber<T>, IAsyncPublisher<T>, IDisposable
+    public class AsyncBroker<T> : IAsyncSubscriber<T>, IAsyncPublisher<T>, IDisposable
     {
         readonly List<IAsyncSubscriber<T>> _subscribers = new();
         bool _disposed;
@@ -551,7 +551,7 @@ namespace BinDI
     
     public class Property<T> : IPublisher, IBufferedPublisher<T>, ISubscriber<T>, IDisposable
     {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
         Observer<T> _observer;
         public Observable<T> AsObservable => _property;
         public Observer<T> AsObserver => _observer ??= _property.AsObserver();
@@ -584,7 +584,7 @@ namespace BinDI
             
             IDisposable SubscribeImpl()
             {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
                 return _property.Subscribe(subscriber, static (_, p) => p.Publish());
 #else
                 return _property.SubscribeWithState(subscriber, static (_, p) => p.Publish());
@@ -600,7 +600,7 @@ namespace BinDI
             
             IDisposable SubscribeImpl()
             {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
                 return _property.Subscribe(subscriber, static (value, p) => p.Publish(value));
 #else
                 return _property.SubscribeWithState(subscriber, static (value, p) => p.Publish(value));
@@ -617,7 +617,7 @@ namespace BinDI
     
     public abstract class ReadOnlyProperty<T> : IPublisher, IBufferedPublisher<T>, IInitializable, IDisposable
     {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
         public Observable<T> AsObservable => _property;
 #else
         public IObservable<T> AsObservable => _property;
@@ -651,7 +651,7 @@ namespace BinDI
             
             IDisposable SubscribeImpl()
             {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
                 return _property.Subscribe(subscriber, static (_, p) => p.Publish());
 #else
                 return _property.SubscribeWithState(subscriber, static (_, p) => p.Publish());
@@ -667,7 +667,7 @@ namespace BinDI
             
             IDisposable SubscribeImpl()
             {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
                 return _property.Subscribe(subscriber, static (value, p) => p.Publish(value));
 #else
                 return _property.SubscribeWithState(subscriber, static (value, p) => p.Publish(value));
@@ -767,7 +767,7 @@ namespace BinDI
     
     public sealed class ScopedDisposable : IScopedDisposable, IDisposable
     {
-#if BINDI_R3_ENABLED
+#if BINDI_SUPPORT_R3
         DisposableBag _bag;
         
         public void Add(IDisposable disposable)
@@ -1163,7 +1163,7 @@ namespace BinDI
                 : null;
         }
         
-#if BINDI_UNITASK_ENABLED
+#if BINDI_SUPPORT_UNITASK
         public IDisposable ConnectAsyncValuePubSub<TPublisher, TSubscriber>(Type valueType, TPublisher publisher, TSubscriber subscriber)
         {
             _genericParameterArguments[0] = valueType;

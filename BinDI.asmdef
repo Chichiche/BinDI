@@ -16,6 +16,32 @@
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "jp.hadashikick.vcontainer",
+            "expression": "",
+            "define": "BINDI_SUPPORT_VCONTAINER"
+        },
+        {
+            "name": "com.cysharp.r3",
+            "expression": "",
+            "define": "BINDI_SUPPORT_R3"
+        },
+        {
+            "name": "com.neuecc.unirx",
+            "expression": "",
+            "define": "BINDI_SUPPORT_UNIRX"
+        },
+        {
+            "name": "com.cysharp.unitask",
+            "expression": "",
+            "define": "BINDI_SUPPORT_UNITASK"
+        },
+        {
+            "name": "com.unity.addressables",
+            "expression": "",
+            "define": "BINDI_SUPPORT_ADDRESSABLE"
+        }
+    ],
     "noEngineReferences": false
 }
