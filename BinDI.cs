@@ -154,6 +154,12 @@ namespace BinDI
         {
             return publisher.Subscribe(new ActionSubscriber<T>(publish));
         }
+        
+        public static T AddTo<T>(this T disposable, IScopedDisposable scopedDisposable) where T : IDisposable
+        {
+            scopedDisposable.Add(disposable);
+            return disposable;
+        }
     }
     
     public static class BinDiInstaller
@@ -372,7 +378,7 @@ namespace BinDI
     
     #region BaseTypes
     
-    public class Channel : IPublisher, ISubscriber, IDisposable
+    public class Broker : IPublisher, ISubscriber, IDisposable
     {
 #if BINDI_R3_ENABLED
         Observer<Unit> _observer;
@@ -417,7 +423,7 @@ namespace BinDI
         }
     }
     
-    public class Channel<T> : IPublisher, IPublisher<T>, ISubscriber<T>, IDisposable
+    public class Broker<T> : IPublisher, IPublisher<T>, ISubscriber<T>, IDisposable
     {
 #if BINDI_R3_ENABLED
         Observer<T> _observer;
@@ -565,7 +571,10 @@ namespace BinDI
             if (_disposed) return;
             HasValue = true;
             _property.Value = value;
+            OnPublished(value);
         }
+        
+        protected virtual void OnPublished(T value) { }
         
         public IDisposable Subscribe(ISubscriber subscriber)
         {
