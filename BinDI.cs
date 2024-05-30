@@ -257,19 +257,20 @@ SOFTWARE.
         public static IScopedObjectResolver CreateDisposableLinkedChildScope(this IObjectResolver scope, Action<IContainerBuilder> installation = null)
         {
             var childScope = scope.CreateScope(installation);
-            scope.AddScopedDisposeCallback(() => childScope.Dispose());
+            childScope.AddTo(scope);
             return childScope;
         }
 #endif
         
 #if BINDI_SUPPORT_VCONTAINER
-        public static void AddScopedDisposeCallback(this IObjectResolver scope, Action onDispose)
+        public static T AddTo<T>(this T disposable, IObjectResolver scope) where T : IDisposable
         {
             if (! scope.TryResolve<IScopedDisposable>(out var scopedDisposable))
             {
                 throw new InvalidOperationException($"{nameof( IScopedDisposable )} is not registered in the current scope.");
             }
-            scopedDisposable.Add(new ActionDisposable(onDispose));
+            scopedDisposable.Add(disposable);
+            return disposable;
         }
 #endif
     }
@@ -868,7 +869,6 @@ SOFTWARE.
     public sealed class RegistrationBinder
     {
 #if BINDI_SUPPORT_VCONTAINER
-        readonly List<MonoBehaviour> _getComponentsBuffer = new( 32 );
         readonly BinDiOptions _binDiOptions;
         readonly RegistrationProvider _registrationProvider;
         readonly FieldInfo _concreteTypeField = typeof( DomainRegistration ).GetField("_concreteType", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -889,14 +889,6 @@ SOFTWARE.
             if (scope == null) return;
             RegisterGlobalScopeModules(builder, _binDiOptions.DomainRegistrationLogEnabled ? scope.ToString() : default);
             TryRegisterScopedModules(builder, scope);
-        }
-        
-        public void Bind(IContainerBuilder builder, GameObject scopedGameObject)
-        {
-            if (scopedGameObject == null) return;
-            RegisterGlobalScopeModules(builder, _binDiOptions.DomainRegistrationLogEnabled ? scopedGameObject.name : default);
-            scopedGameObject.GetComponents(_getComponentsBuffer);
-            for (var i = 0; i < _getComponentsBuffer.Count; i++) TryRegisterScopedModules(builder, _getComponentsBuffer[i].GetType());
         }
         
         void RegisterGlobalScopeModules(IContainerBuilder builder, string scopeName)
@@ -927,115 +919,6 @@ SOFTWARE.
 #endif
     }
     
-    public sealed class GameObjectScopeBuilder
-    {
-#if BINDI_SUPPORT_VCONTAINER
-        readonly List<MonoBehaviour> _getComponentsBuffer = new( 16 );
-        readonly RegistrationBinder _registrationBinder;
-        readonly IObjectResolver _scope;
-        
-        public GameObjectScopeBuilder(RegistrationBinder registrationBinder, IObjectResolver scope)
-        {
-            _registrationBinder = registrationBinder;
-            _scope = scope;
-        }
-        
-        public IScopedObjectResolver Build(GameObject gameObject)
-        {
-            if (gameObject == null) return default;
-            var scope = _scope.CreateScope(builder => Build(gameObject, builder));
-            if (gameObject.TryGetComponent<OnDestroyTrigger>(out var onDestroyTrigger)) onDestroyTrigger.OnDestroyHandler = scope.Dispose;
-            else gameObject.AddComponent<OnDestroyTrigger>().OnDestroyHandler = scope.Dispose;
-            return scope;
-        }
-        
-        public void Build(GameObject gameObject, IContainerBuilder builder)
-        {
-            if (! gameObject) return;
-            builder.RegisterBuildCallback(scope => scope.InjectGameObject(gameObject));
-            gameObject.GetComponents(_getComponentsBuffer);
-            for (var i = 0; i < _getComponentsBuffer.Count; i++) _registrationBinder.Bind(builder, _getComponentsBuffer[i].GetType());
-            var transform = gameObject.transform;
-            for (var i = 0; i < transform.childCount; i++) TryBuildChild(builder, transform.GetChild(i));
-        }
-        
-        void TryBuildChild(IContainerBuilder builder, Transform child)
-        {
-            if (! child) return;
-            child.GetComponents(_getComponentsBuffer);
-            var isScope = _getComponentsBuffer.Any(component => component.GetType().GetCustomAttribute<ScopedComponentAttribute>() != null);
-            if (isScope)
-            {
-                BuildNewScope(builder, child.gameObject);
-                return;
-            }
-            for (var i = 0; i < child.childCount; i++) TryBuildChild(builder, child.GetChild(i));
-        }
-        
-        void BuildNewScope(IContainerBuilder builder, GameObject gameObject)
-        {
-            builder.RegisterBuildCallback(CreateNewScope);
-            return;
-            void CreateNewScope(IObjectResolver scope) => scope.CreateScope(ConfigureNewScope);
-            void ConfigureNewScope(IContainerBuilder newScopeBuilder) => Build(gameObject, newScopeBuilder);
-        }
-        
-        public static void TryInstall(IContainerBuilder builder)
-        {
-            if (builder.Exists(typeof( GameObjectScopeBuilder ))) return;
-            builder.Register<GameObjectScopeBuilder>(Lifetime.Scoped);
-            RegistrationBinder.TryInstall(builder);
-        }
-#endif
-    }
-    
-    public sealed class PrefabBuilder
-    {
-#if BINDI_SUPPORT_VCONTAINER
-        readonly GameObjectScopeBuilder _gameObjectScopeBuilder;
-        readonly IObjectResolver _scope;
-        
-        public PrefabBuilder(GameObjectScopeBuilder gameObjectScopeBuilder, IObjectResolver scope)
-        {
-            _gameObjectScopeBuilder = gameObjectScopeBuilder;
-            _scope = scope;
-        }
-        
-        public T Build<T>(T prefab, Transform parent = null, Action<IContainerBuilder> install = null) where T : Component
-        {
-            if (prefab == null) return null;
-            var instance = UnityObject.Instantiate(prefab, parent);
-            var scope = _scope.CreateScope(builder => ConfigureScope(builder, install, instance.gameObject));
-            if (instance.TryGetComponent<OnDestroyTrigger>(out var onDestroyTrigger)) onDestroyTrigger.OnDestroyHandler = scope.Dispose;
-            else instance.gameObject.AddComponent<OnDestroyTrigger>().OnDestroyHandler = scope.Dispose;
-            return instance;
-        }
-        
-        public GameObject Build(GameObject prefab, Transform parent = null, Action<IContainerBuilder> install = null)
-        {
-            if (prefab == null) return null;
-            var instance = UnityObject.Instantiate(prefab, parent);
-            var scope = _scope.CreateScope(builder => ConfigureScope(builder, install, instance));
-            if (instance.TryGetComponent<OnDestroyTrigger>(out var onDestroyTrigger)) onDestroyTrigger.OnDestroyHandler = scope.Dispose;
-            else instance.AddComponent<OnDestroyTrigger>().OnDestroyHandler = scope.Dispose;
-            return instance;
-        }
-        
-        void ConfigureScope(IContainerBuilder builder, Action<IContainerBuilder> install, GameObject gameObject)
-        {
-            install?.Invoke(builder);
-            _gameObjectScopeBuilder.Build(gameObject, builder);
-        }
-        
-        public static void TryInstall(IContainerBuilder builder)
-        {
-            if (builder.Exists(typeof( PrefabBuilder ))) return;
-            builder.Register<PrefabBuilder>(Lifetime.Scoped);
-            GameObjectScopeBuilder.TryInstall(builder);
-        }
-#endif
-    }
-    
     public static class RegistrationUtil
     {
 #if BINDI_SUPPORT_VCONTAINER
@@ -1053,30 +936,6 @@ SOFTWARE.
                     registrationBinder.Bind(builder, targetScope);
                 }
             });
-        }
-#endif
-        
-#if BINDI_SUPPORT_VCONTAINER
-        public static IScopedObjectResolver CreateDisposableLinkedBinDiScope(this IObjectResolver scope, params object[] targetScopes)
-        {
-            if (! scope.TryResolve<IScopedDisposable>(out var scopedDisposable))
-            {
-                throw new InvalidOperationException($"{nameof( IScopedDisposable )} is not registered in the current scope.");
-            }
-            var newScope = CreateBinDiScope(scope, targetScopes);
-            scopedDisposable.Add(newScope);
-            return newScope;
-        }
-#endif
-        
-#if BINDI_SUPPORT_VCONTAINER
-        public static IScopedObjectResolver BuildGameObjectScope(this IObjectResolver scope, GameObject gameObject)
-        {
-            if (! scope.TryResolve<GameObjectScopeBuilder>(out var gameObjectScopeBuilder))
-            {
-                throw new InvalidOperationException($"{nameof( GameObjectScopeBuilder )} is not registered in the current scope.");
-            }
-            return gameObjectScopeBuilder.Build(gameObject);
         }
 #endif
     }
@@ -1761,46 +1620,37 @@ SOFTWARE.
     
     public sealed class ConnectionProvider
     {
-        readonly Dictionary<Type, List<PublishToAttribute>> _publishToListMap = new();
-        readonly Dictionary<Type, List<SubscribeFromAttribute>> _subscribeFromListMap = new();
+        readonly ReadOnlyCollection<Type> _emptyTypes = new( Array.Empty<Type>() );
+        readonly Dictionary<Type, List<Type>> _subscribableTypesSourceMap = new();
+        readonly Dictionary<Type, ReadOnlyCollection<Type>> _subscribableTypesMap;
+        readonly Dictionary<Type, List<Type>> _publishableTypesSourceMap = new();
+        readonly Dictionary<Type, ReadOnlyCollection<Type>> _publishableTypesMap;
         
         public ConnectionProvider(AppDomainProvider appDomainProvider)
         {
-            CollectDomainConnections(appDomainProvider);
+            CollectConnections(appDomainProvider);
+            _subscribableTypesMap = _subscribableTypesSourceMap.ToDictionary(kv => kv.Key, kv => new ReadOnlyCollection<Type>(kv.Value));
+            _publishableTypesMap = _publishableTypesSourceMap.ToDictionary(kv => kv.Key, kv => new ReadOnlyCollection<Type>(kv.Value));
         }
         
-        public int GetPublishToConnectionCount(Type publisherOrSubscriberType)
+        public ReadOnlyCollection<Type> GetSubscribableTypes(Type publishableType)
         {
-            return _publishToListMap.TryGetValue(publisherOrSubscriberType, out var attributes)
-                ? attributes.Count
-                : 0;
+            return _subscribableTypesMap.GetValueOrDefault(publishableType, _emptyTypes);
         }
         
-        public PublishToAttribute GetPublishToConnection(Type subscriberType, int index)
+        public ReadOnlyCollection<Type> GetPublishableTypes(Type subscribableType)
         {
-            return _publishToListMap[subscriberType][index];
+            return _publishableTypesMap.GetValueOrDefault(subscribableType, _emptyTypes);
         }
         
-        public int GetSubscribeFromConnectionCount(Type publisherType)
-        {
-            return _subscribeFromListMap.TryGetValue(publisherType, out var attributes)
-                ? attributes.Count
-                : 0;
-        }
-        
-        public SubscribeFromAttribute GetSubscribeFromConnection(Type publisherType, int index)
-        {
-            return _subscribeFromListMap[publisherType][index];
-        }
-        
-        void CollectDomainConnections(AppDomainProvider appDomainProvider)
+        void CollectConnections(AppDomainProvider appDomainProvider)
         {
             for (var i = 0; i < appDomainProvider.ConcreteClassCount; i++) CollectConnections(appDomainProvider.GetConcreteClass(i));
         }
         
         void CollectConnections(Type concreteClass)
         {
-            foreach (var attribute in concreteClass.GetCustomAttributes().OfType<PublishToAttribute>()) CollectConnection(concreteClass, attribute);
+            foreach (var attribute in concreteClass.GetCustomAttributes()) CollectConnection(concreteClass, attribute);
         }
         
         void CollectConnection(Type concreteClass, Attribute attribute)
@@ -1818,14 +1668,20 @@ SOFTWARE.
         
         void CollectPublishToConnection(Type concreteClass, PublishToAttribute publishToAttribute)
         {
-            if (! _publishToListMap.ContainsKey(concreteClass)) _publishToListMap.Add(concreteClass, new List<PublishToAttribute>());
-            _publishToListMap[concreteClass].Add(publishToAttribute);
+            if (! _subscribableTypesSourceMap.ContainsKey(publishToAttribute.PublishableType))
+            {
+                _subscribableTypesSourceMap.Add(publishToAttribute.PublishableType, new List<Type>());
+            }
+            _subscribableTypesSourceMap[publishToAttribute.PublishableType].Add(concreteClass);
         }
         
         void CollectSubscribeFromConnection(Type concreteClass, SubscribeFromAttribute subscribeFromAttribute)
         {
-            if (! _subscribeFromListMap.ContainsKey(concreteClass)) _subscribeFromListMap.Add(concreteClass, new List<SubscribeFromAttribute>());
-            _subscribeFromListMap[concreteClass].Add(subscribeFromAttribute);
+            if (! _publishableTypesSourceMap.ContainsKey(subscribeFromAttribute.SubscribableType))
+            {
+                _publishableTypesSourceMap.Add(subscribeFromAttribute.SubscribableType, new List<Type>());
+            }
+            _publishableTypesSourceMap[subscribeFromAttribute.SubscribableType].Add(concreteClass);
         }
         
 #if BINDI_SUPPORT_VCONTAINER
@@ -1838,44 +1694,58 @@ SOFTWARE.
 #endif
     }
     
-    public sealed class ConnectionService
+    public sealed class ConnectionBinder
     {
         readonly Type[] _genericParameterArguments = new Type[1];
         readonly object[] _subscribeArguments = new object[1];
         readonly BinDiOptions _binDiOptions;
+        readonly ConnectionProvider _connectionProvider;
         
-        public ConnectionService(BinDiOptions binDiOptions)
+        public ConnectionBinder(BinDiOptions binDiOptions, ConnectionProvider connectionProvider)
         {
             _binDiOptions = binDiOptions;
+            _connectionProvider = connectionProvider;
         }
         
-        public IDisposable PublishTo<T>(T subscribableInstance, Type publishableType, IObjectResolver scope)
+        public void Bind<T>(IContainerBuilder builder, T instance)
         {
-            if (! scope.TryResolve(publishableType, out var resolvedPublishable)) return null;
-            if (subscribableInstance is ISubscribable subscribable && resolvedPublishable is IPublishable publishable) return ConnectPubSub(subscribable, publishable);
-            if (TryGetGenericArgument(publishableType, typeof( IPublishable<> ), out var valueType)) return ConnectValuePubSub(valueType, subscribableInstance, resolvedPublishable);
+            var instanceType = instance.GetType();
+            var publishableTypes = _connectionProvider.GetPublishableTypes(instanceType);
+            var subscribableTypes = _connectionProvider.GetSubscribableTypes(instanceType);
+            if (publishableTypes.Count + subscribableTypes.Count == 0) return;
+            builder.RegisterBuildCallback(scope =>
+            {
+                if (! scope.TryResolve<IScopedDisposable>(out var scopedDisposable))
+                {
+                    throw new InvalidOperationException($"{nameof( IScopedDisposable )} is not registered in the current scope.");
+                }
+                for (var i = 0; i < publishableTypes.Count; i++)
+                {
+                    if (! scope.TryResolve(publishableTypes[i], out var publishable)) continue;
+                    Connect(instance, publishable).AddTo(scopedDisposable);
+                }
+                for (var i = 0; i < subscribableTypes.Count; i++)
+                {
+                    if (! scope.TryResolve(subscribableTypes[i], out var subscribable)) continue;
+                    Connect(subscribable, instance).AddTo(scopedDisposable);
+                }
+            });
+        }
+        
+        IDisposable Connect(object subscribable, object publishable)
+        {
+            if (subscribable is ISubscribable voidSubscribable && publishable is IPublishable voidPublishable) return voidSubscribable.Subscribe(voidPublishable);
+            if (TryGetGenericArgument(subscribable.GetType(), typeof( IPublishable<> ), out var valueType)) return ConnectValuePubSub(valueType, subscribable, publishable);
 #if BINDI_SUPPORT_UNITASK
-            if (subscribableInstance is IAsyncSubscribable asyncPublisher && resolvedPublishable is IAsyncPublishable asyncSubscriber) return asyncPublisher.Subscribe(asyncSubscriber);
-            if (TryGetGenericArgument(publishableType, typeof( IAsyncPublishable<> ), out var asyncValueType)) return ConnectAsyncValuePubSub(asyncValueType, subscribableInstance, resolvedPublishable);
+            if (subscribable is ISubscribable asyncPublisher && publishable is IAsyncPublishable asyncSubscriber) return asyncPublisher.Subscribe(asyncSubscriber);
+            if (TryGetGenericArgument(subscribable.GetType(), typeof( IAsyncPublishable<> ), out var asyncValueType)) return ConnectAsyncValuePubSub(asyncValueType, subscribable, publishable);
 #endif
-            return null;
+            throw new ArgumentException($"Failed to connect [{subscribable}] to [{publishable}].");
         }
         
-        public IDisposable SubscribeFrom<T>(Type subscribableType, T publishableInstance, IObjectResolver scope)
+        static bool TryGetGenericArgument(Type type, Type genericDefinition, out Type genericArgument)
         {
-            if (! scope.TryResolve(subscribableType, out var resolvedPublisher)) return null;
-            if (resolvedPublisher is ISubscribable publisher && publishableInstance is IPublishable subscriber) return ConnectPubSub(publisher, subscriber);
-            if (TryGetGenericArgument(subscribableType, typeof( ISubscribable<> ), out var valueType)) return ConnectValuePubSub(valueType, resolvedPublisher, publishableInstance);
-#if BINDI_SUPPORT_UNITASK
-            if (resolvedPublisher is IAsyncSubscribable asyncPublisher && publishableInstance is IAsyncPublishable asyncSubscriber) return asyncPublisher.Subscribe(asyncSubscriber);
-            if (TryGetGenericArgument(subscribableType, typeof( IAsyncSubscribable<> ), out var asyncValueType)) return ConnectAsyncValuePubSub(asyncValueType, resolvedPublisher, publishableInstance);
-#endif
-            return null;
-        }
-        
-        public bool TryGetGenericArgument(Type scopeType, Type genericDefinition, out Type genericArgument)
-        {
-            foreach (var instanceInterface in scopeType.GetInterfaces())
+            foreach (var instanceInterface in type.GetInterfaces())
             {
                 if (! instanceInterface.IsGenericType) continue;
                 var genericTypeDefinition = instanceInterface.GetGenericTypeDefinition();
@@ -1887,108 +1757,34 @@ SOFTWARE.
             return false;
         }
         
-        public IDisposable ConnectPubSub(ISubscribable subscribable, IPublishable publishable)
-        {
-            return Connect(subscribable, publishable, subscribable.GetType().GetMethod("Subscribe"));
-        }
-        
-        public IDisposable ConnectValuePubSub<TPublisher, TSubscriber>(Type valueType, TPublisher publisher, TSubscriber subscriber)
+        IDisposable ConnectValuePubSub(Type valueType, object subscribable, object publishable)
         {
             _genericParameterArguments[0] = valueType;
-            var publisherType = typeof( ISubscribable<> ).MakeGenericType(_genericParameterArguments);
-            var subscribeMethod = publisherType.GetMethod("Subscribe");
+            var subscribableType = typeof( ISubscribable<> ).MakeGenericType(_genericParameterArguments);
+            var subscribeMethod = subscribableType.GetMethod("Subscribe");
             return subscribeMethod != null
-                ? Connect(publisher, subscriber, subscribeMethod)
-                : null;
+                ? Connect(subscribable, publishable, subscribeMethod)
+                : throw new ArgumentException($"Failed to connect [{subscribable}] to [{publishable}].");
         }
         
 #if BINDI_SUPPORT_UNITASK
-        public IDisposable ConnectAsyncValuePubSub<TPublisher, TSubscriber>(Type valueType, TPublisher publisher, TSubscriber subscriber)
+        IDisposable ConnectAsyncValuePubSub(Type valueType, object subscribable, object publishable)
         {
             _genericParameterArguments[0] = valueType;
-            var publisherType = typeof( IAsyncSubscribable<> ).MakeGenericType(_genericParameterArguments);
-            var subscribeMethod = publisherType.GetMethod("Subscribe");
+            var subscribableType = typeof( IAsyncSubscribable<> ).MakeGenericType(_genericParameterArguments);
+            var subscribeMethod = subscribableType.GetMethod("Subscribe");
             return subscribeMethod != null
-                ? Connect(publisher, subscriber, subscribeMethod)
-                : null;
+                ? Connect(subscribable, publishable, subscribeMethod)
+                : throw new ArgumentException($"Failed to connect [{subscribable}] to [{publishable}].");
         }
 #endif
         
-        IDisposable Connect<TPublisher, TSubscriber>(TPublisher publisher, TSubscriber subscriber, MethodInfo subscribeMethod)
+        IDisposable Connect(object subscribable, object publishable, MethodInfo subscribeMethod)
         {
-            _subscribeArguments[0] = subscriber;
-            var connection = (IDisposable)subscribeMethod.Invoke(publisher, _subscribeArguments);
-            if (_binDiOptions.PubSubConnectionLogEnabled) Debug.Log($"{nameof( BinDI )} connected [{publisher}] to [{subscriber}].");
+            _subscribeArguments[0] = publishable;
+            var connection = (IDisposable)subscribeMethod.Invoke(subscribable, _subscribeArguments);
+            if (_binDiOptions.PubSubConnectionLogEnabled) Debug.Log($"{nameof( BinDI )} connected [{subscribable}] to [{publishable}].");
             return connection;
-        }
-        
-        public static void TryInstall(IContainerBuilder builder)
-        {
-            if (builder.Exists(typeof( ConnectionService ), findParentScopes: true)) return;
-            builder.Register<ConnectionService>(Lifetime.Singleton);
-            BinDiOptions.TryInstall(builder);
-        }
-    }
-    
-    public sealed class ConnectionBinder
-    {
-        readonly ConnectionProvider _connectionProvider;
-        readonly ConnectionService _connectionService;
-        
-        public ConnectionBinder(ConnectionProvider connectionProvider, ConnectionService connectionService)
-        {
-            _connectionProvider = connectionProvider;
-            _connectionService = connectionService;
-        }
-        
-        public void TryBind<T>(IContainerBuilder builder, T publisherOrSubscriber)
-        {
-            EntryPointsBuilder
-            builder.RegisterBuildCallback(parentScope => CreateConnectionScope(publisherOrSubscriber, parentScope));
-        }
-        
-        void CreateConnectionScope<T>(T publisherOrSubscriber, IObjectResolver parentScope)
-        {
-            parentScope.CreateDisposableLinkedChildScope(connectionScopeBuilder => ConfigureConnectionScope(publisherOrSubscriber, parentScope, connectionScopeBuilder));
-        }
-        
-        void ConfigureConnectionScope<T>(T publisherOrSubscriber, IObjectResolver parentScope, IContainerBuilder connectionScopeBuilder)
-        {
-            var publisherOrSubscriberType = publisherOrSubscriber.GetType();
-            var connections = GetPublishToConnections(parentScope, publisherOrSubscriber, publisherOrSubscriberType)
-                .Concat(GetSubscribeFromConnections(parentScope, publisherOrSubscriber, publisherOrSubscriberType))
-                .Where(connection => connection != null)
-                .ToArray();
-            if (connections.Length <= 0) return;
-            connectionScopeBuilder.RegisterBuildCallback(connectionScope => connectionScope.Resolve<IScopedDisposable>().AddRange(connections));
-        }
-        
-        IEnumerable<IDisposable> GetPublishToConnections<T>(IObjectResolver parentScope, T publisherOrSubscriber, Type publisherOrSubscriberType)
-        {
-            var connectionCount = _connectionProvider.GetPublishToConnectionCount(publisherOrSubscriberType);
-            for (var i = 0; i < connectionCount; i++) yield return TryConnect(i);
-            yield break;
-            
-            IDisposable TryConnect(int i)
-            {
-                return _connectionProvider
-                    .GetPublishToConnection(publisherOrSubscriberType, i)
-                    .TryConnect(parentScope, publisherOrSubscriber, _connectionService);
-            }
-        }
-        
-        IEnumerable<IDisposable> GetSubscribeFromConnections<T>(IObjectResolver parentScope, T publisherOrSubscriber, Type publisherOrSubscriberType)
-        {
-            var connectionCount = _connectionProvider.GetSubscribeFromConnectionCount(publisherOrSubscriberType);
-            for (var i = 0; i < connectionCount; i++) yield return TryConnect(i);
-            yield break;
-            
-            IDisposable TryConnect(int i)
-            {
-                return _connectionProvider
-                    .GetSubscribeFromConnection(publisherOrSubscriberType, i)
-                    .TryConnect(parentScope, publisherOrSubscriber, _connectionService);
-            }
         }
         
         public static void TryInstall(IContainerBuilder builder)
@@ -1996,8 +1792,147 @@ SOFTWARE.
             if (builder.Exists(typeof( ConnectionBinder ), findParentScopes: true)) return;
             builder.Register<ConnectionBinder>(Lifetime.Singleton);
             ConnectionProvider.TryInstall(builder);
-            ConnectionService.TryInstall(builder);
         }
+    }
+    
+    #endregion
+    
+    #region GameObjectModules
+    
+    public sealed class GameObjectScopeBuilder
+    {
+#if BINDI_SUPPORT_VCONTAINER
+        readonly List<MonoBehaviour> _getComponentsBuffer = new( 16 );
+        readonly RegistrationBinder _registrationBinder;
+        readonly ConnectionBinder _connectionBinder;
+        readonly IObjectResolver _scope;
+        
+        public GameObjectScopeBuilder(RegistrationBinder registrationBinder, ConnectionBinder connectionBinder, IObjectResolver scope)
+        {
+            _registrationBinder = registrationBinder;
+            _connectionBinder = connectionBinder;
+            _scope = scope;
+        }
+        
+        public IScopedObjectResolver Build(GameObject gameObject)
+        {
+            if (gameObject == null) return default;
+            var scope = _scope.CreateScope(builder => Build(gameObject, builder));
+            if (gameObject.TryGetComponent<OnDestroyTrigger>(out var onDestroyTrigger)) onDestroyTrigger.OnDestroyHandler = scope.Dispose;
+            else gameObject.AddComponent<OnDestroyTrigger>().OnDestroyHandler = scope.Dispose;
+            return scope;
+        }
+        
+        public void Build(GameObject gameObject, IContainerBuilder builder)
+        {
+            if (! gameObject) return;
+            builder.RegisterBuildCallback(scope => scope.InjectGameObject(gameObject));
+            gameObject.GetComponents(_getComponentsBuffer);
+            BindComponents(builder);
+            var transform = gameObject.transform;
+            for (var i = 0; i < transform.childCount; i++) TryBuildChild(builder, transform.GetChild(i));
+        }
+        
+        void TryBuildChild(IContainerBuilder builder, Transform child)
+        {
+            if (! child) return;
+            child.GetComponents(_getComponentsBuffer);
+            var isScope = _getComponentsBuffer.Any(component => component.GetType().GetCustomAttribute<ScopedComponentAttribute>() != null);
+            if (isScope)
+            {
+                BuildNewScope(builder, child.gameObject);
+                return;
+            }
+            BindComponents(builder);
+            for (var i = 0; i < child.childCount; i++) TryBuildChild(builder, child.GetChild(i));
+        }
+        
+        void BindComponents(IContainerBuilder builder)
+        {
+            for (var i = 0; i < _getComponentsBuffer.Count; i++)
+            {
+                var component = _getComponentsBuffer[i];
+                var componentType = component.GetType();
+                if (! builder.Exists(componentType)) builder.RegisterInstance(_getComponentsBuffer[i]);
+                _registrationBinder.Bind(builder, componentType);
+                _connectionBinder.Bind(builder, component);
+            }
+        }
+        
+        static void BuildNewScope(IContainerBuilder builder, GameObject gameObject)
+        {
+            builder.RegisterBuildCallback(scope => scope.Resolve<GameObjectScopeBuilder>().Build(gameObject));
+        }
+        
+        public static void TryInstall(IContainerBuilder builder)
+        {
+            if (builder.Exists(typeof( GameObjectScopeBuilder ))) return;
+            builder.Register<GameObjectScopeBuilder>(Lifetime.Scoped);
+            RegistrationBinder.TryInstall(builder);
+            ConnectionBinder.TryInstall(builder);
+        }
+#endif
+    }
+    
+    public sealed class PrefabBuilder
+    {
+#if BINDI_SUPPORT_VCONTAINER
+        readonly GameObjectScopeBuilder _gameObjectScopeBuilder;
+        readonly IObjectResolver _scope;
+        
+        public PrefabBuilder(GameObjectScopeBuilder gameObjectScopeBuilder, IObjectResolver scope)
+        {
+            _gameObjectScopeBuilder = gameObjectScopeBuilder;
+            _scope = scope;
+        }
+        
+        public T Build<T>(T prefab, Transform parent = null, Action<IContainerBuilder> install = null) where T : Component
+        {
+            if (prefab == null) return null;
+            var instance = UnityObject.Instantiate(prefab, parent);
+            var scope = _scope.CreateScope(builder => ConfigureScope(builder, install, instance.gameObject));
+            if (instance.TryGetComponent<OnDestroyTrigger>(out var onDestroyTrigger)) onDestroyTrigger.OnDestroyHandler = scope.Dispose;
+            else instance.gameObject.AddComponent<OnDestroyTrigger>().OnDestroyHandler = scope.Dispose;
+            return instance;
+        }
+        
+        public GameObject Build(GameObject prefab, Transform parent = null, Action<IContainerBuilder> install = null)
+        {
+            if (prefab == null) return null;
+            var instance = UnityObject.Instantiate(prefab, parent);
+            var scope = _scope.CreateScope(builder => ConfigureScope(builder, install, instance));
+            if (instance.TryGetComponent<OnDestroyTrigger>(out var onDestroyTrigger)) onDestroyTrigger.OnDestroyHandler = scope.Dispose;
+            else instance.AddComponent<OnDestroyTrigger>().OnDestroyHandler = scope.Dispose;
+            return instance;
+        }
+        
+        void ConfigureScope(IContainerBuilder builder, Action<IContainerBuilder> install, GameObject gameObject)
+        {
+            install?.Invoke(builder);
+            _gameObjectScopeBuilder.Build(gameObject, builder);
+        }
+        
+        public static void TryInstall(IContainerBuilder builder)
+        {
+            if (builder.Exists(typeof( PrefabBuilder ))) return;
+            builder.Register<PrefabBuilder>(Lifetime.Scoped);
+            GameObjectScopeBuilder.TryInstall(builder);
+        }
+#endif
+    }
+    
+    public static class GameObjectUtil
+    {
+#if BINDI_SUPPORT_VCONTAINER
+        public static IScopedObjectResolver BuildGameObjectScope(this IObjectResolver scope, GameObject gameObject)
+        {
+            if (! scope.TryResolve<GameObjectScopeBuilder>(out var gameObjectScopeBuilder))
+            {
+                throw new InvalidOperationException($"{nameof( GameObjectScopeBuilder )} is not registered in the current scope.");
+            }
+            return gameObjectScopeBuilder.Build(gameObject);
+        }
+#endif
     }
     
     #endregion
