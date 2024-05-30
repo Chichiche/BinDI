@@ -1004,11 +1004,11 @@ SOFTWARE.
     }
     
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-    public sealed class SubscribeFromAttribute : Attribute
+    public sealed class PublishFromAttribute : Attribute
     {
         public Type SubscribableType { get; }
         
-        public SubscribeFromAttribute(Type subscribableType)
+        public PublishFromAttribute(Type subscribableType)
         {
             SubscribableType = subscribableType;
         }
@@ -1590,8 +1590,8 @@ SOFTWARE.
                 case PublishToAttribute publishToAttribute:
                     CollectPublishToConnection(concreteClass, publishToAttribute);
                     break;
-                case SubscribeFromAttribute subscribeFromAttribute:
-                    CollectSubscribeFromConnection(concreteClass, subscribeFromAttribute);
+                case PublishFromAttribute publishFromAttribute:
+                    CollectPublishFromConnection(concreteClass, publishFromAttribute);
                     break;
             }
         }
@@ -1605,13 +1605,13 @@ SOFTWARE.
             _subscribableTypesSourceMap[publishToAttribute.PublishableType].Add(concreteClass);
         }
         
-        void CollectSubscribeFromConnection(Type concreteClass, SubscribeFromAttribute subscribeFromAttribute)
+        void CollectPublishFromConnection(Type concreteClass, PublishFromAttribute publishFromAttribute)
         {
-            if (! _publishableTypesSourceMap.ContainsKey(subscribeFromAttribute.SubscribableType))
+            if (! _publishableTypesSourceMap.ContainsKey(publishFromAttribute.SubscribableType))
             {
-                _publishableTypesSourceMap.Add(subscribeFromAttribute.SubscribableType, new List<Type>());
+                _publishableTypesSourceMap.Add(publishFromAttribute.SubscribableType, new List<Type>());
             }
-            _publishableTypesSourceMap[subscribeFromAttribute.SubscribableType].Add(concreteClass);
+            _publishableTypesSourceMap[publishFromAttribute.SubscribableType].Add(concreteClass);
         }
         
 #if BINDI_SUPPORT_VCONTAINER
@@ -1665,10 +1665,10 @@ SOFTWARE.
         
         IDisposable Connect(object subscribable, object publishable)
         {
-            if (subscribable is ISubscribable voidSubscribable && publishable is IPublishable voidPublishable) return voidSubscribable.Subscribe(voidPublishable);
+            if (subscribable is ISubscribable voidSubscribable && publishable is IPublishable voidPublishable) return ConnectVoidPubSub(voidSubscribable, voidPublishable);
             if (TryGetGenericArgument(subscribable.GetType(), typeof( IPublishable<> ), out var valueType)) return ConnectValuePubSub(valueType, subscribable, publishable);
 #if BINDI_SUPPORT_UNITASK
-            if (subscribable is IAsyncSubscribable asyncSubscribable && publishable is IAsyncPublishable asyncPublishable) return asyncSubscribable.Subscribe(asyncPublishable);
+            if (subscribable is IAsyncSubscribable asyncSubscribable && publishable is IAsyncPublishable asyncPublishable) return ConnectAsyncVoidPubSub(asyncSubscribable, asyncPublishable);
             if (TryGetGenericArgument(subscribable.GetType(), typeof( IAsyncPublishable<> ), out var asyncValueType)) return ConnectAsyncValuePubSub(asyncValueType, subscribable, publishable);
 #endif
             throw new ArgumentException($"Failed to connect [{subscribable}] to [{publishable}].");
@@ -1688,6 +1688,13 @@ SOFTWARE.
             return false;
         }
         
+        IDisposable ConnectVoidPubSub(ISubscribable subscribable, IPublishable publishable)
+        {
+            var connection = subscribable.Subscribe(publishable);
+            if (_binDiOptions.PubSubConnectionLogEnabled) Debug.Log($"{nameof( BinDI )} connected [{subscribable}] to [{publishable}].");
+            return connection;
+        }
+        
         IDisposable ConnectValuePubSub(Type valueType, object subscribable, object publishable)
         {
             _genericParameterArguments[0] = valueType;
@@ -1699,6 +1706,13 @@ SOFTWARE.
         }
         
 #if BINDI_SUPPORT_UNITASK
+        IDisposable ConnectAsyncVoidPubSub(IAsyncSubscribable subscribable, IAsyncPublishable publishable)
+        {
+            var connection = subscribable.Subscribe(publishable);
+            if (_binDiOptions.PubSubConnectionLogEnabled) Debug.Log($"{nameof( BinDI )} connected [{subscribable}] to [{publishable}].");
+            return connection;
+        }
+        
         IDisposable ConnectAsyncValuePubSub(Type valueType, object subscribable, object publishable)
         {
             _genericParameterArguments[0] = valueType;
@@ -1840,7 +1854,8 @@ SOFTWARE.
             {
                 var component = _getComponentsBuffer[i];
                 var componentType = component.GetType();
-                if (! builder.Exists(componentType)) builder.RegisterInstance(_getComponentsBuffer[i]);
+                
+                if (! builder.Exists(componentType)) builder.RegisterInstance(_getComponentsBuffer[i]).AsSelf();
                 _registrationBinder.Bind(builder, componentType);
                 _connectionBinder.Bind(builder, component);
             }
