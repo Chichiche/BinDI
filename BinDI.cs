@@ -519,6 +519,24 @@ SOFTWARE.
     
 #if BINDI_SUPPORT_VCONTAINER
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
+    public sealed class InstallToAttribute : Attribute
+    {
+        public object Scope { get; }
+        
+        public InstallToAttribute(object scope)
+        {
+            Scope = scope;
+        }
+    }
+    
+    public interface IInstallable
+    {
+        bool TryInstall(IContainerBuilder builder);
+    }
+#endif
+    
+#if BINDI_SUPPORT_VCONTAINER
+    [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     public sealed class RegisterToAttribute : Attribute
     {
         public object Scope { get; }
@@ -693,14 +711,23 @@ SOFTWARE.
 #if BINDI_SUPPORT_VCONTAINER
     public sealed class RegistrationProvider
     {
+        static readonly ReadOnlyCollection<Installation> EmptyInstallations = new( Array.Empty<Installation>() );
         static readonly ReadOnlyCollection<IRegistration> EmptyRegistrations = new( Array.Empty<IRegistration>() );
+        readonly Dictionary<object, List<Installation>> _scopedInstallationListSourceMap = new() { { GlobalScope.Default, new List<Installation>() } };
         readonly Dictionary<object, List<IRegistration>> _scopedRegistrationListSourceMap = new() { { GlobalScope.Default, new List<IRegistration>() } };
+        readonly Dictionary<object, ReadOnlyCollection<Installation>> _scopedInstallationListMap;
         readonly Dictionary<object, ReadOnlyCollection<IRegistration>> _scopedRegistrationListMap;
         
         public RegistrationProvider(AppDomainProvider appDomainProvider)
         {
-            for (var i = 0; i < appDomainProvider.ConcreteClassCount; i++) CollectRegistrations(appDomainProvider.GetConcreteClass(i));
+            for (var i = 0; i < appDomainProvider.ConcreteClassCount; i++) Collect(appDomainProvider.GetConcreteClass(i));
             _scopedRegistrationListMap = _scopedRegistrationListSourceMap.ToDictionary(kv => kv.Key, kv => new ReadOnlyCollection<IRegistration>(kv.Value));
+            _scopedInstallationListMap = _scopedInstallationListSourceMap.ToDictionary(kv => kv.Key, kv => new ReadOnlyCollection<Installation>(kv.Value));
+        }
+        
+        public ReadOnlyCollection<Installation> GetInstallation<T>(T scope)
+        {
+            return _scopedInstallationListMap.GetValueOrDefault(scope, EmptyInstallations);
         }
         
         public ReadOnlyCollection<IRegistration> GetRegistrations<T>(T scope)
@@ -708,18 +735,21 @@ SOFTWARE.
             return _scopedRegistrationListMap.GetValueOrDefault(scope, EmptyRegistrations);
         }
         
-        void CollectRegistrations(Type concreteType)
+        void Collect(Type concreteType)
         {
             foreach (var attribute in concreteType.GetCustomAttributes())
             {
-                CollectRegistration(concreteType, attribute);
+                Collect(concreteType, attribute);
             }
         }
         
-        void CollectRegistration(Type concreteType, Attribute attribute)
+        void Collect(Type concreteType, Attribute attribute)
         {
             switch (attribute)
             {
+                case InstallToAttribute installToAttribute:
+                    GetScopedInstallationList(installToAttribute.Scope).Add(new Installation(concreteType));
+                    break;
                 case RegisterToAttribute registerToAttribute:
                     GetScopedRegistrationList(registerToAttribute.Scope).Add(new DomainRegistration(concreteType, registerToAttribute.Lifetime));
                     break;
@@ -735,6 +765,14 @@ SOFTWARE.
                     break;
 #endif
             }
+        }
+        
+        List<Installation> GetScopedInstallationList(object scope)
+        {
+            if (_scopedInstallationListSourceMap.TryGetValue(scope, out var installationList)) return installationList;
+            installationList = new List<Installation>();
+            _scopedInstallationListSourceMap.Add(scope, installationList);
+            return installationList;
         }
         
         List<IRegistration> GetScopedRegistrationList(object scope)
@@ -765,6 +803,25 @@ SOFTWARE.
     public interface IRegistration
     {
         bool TryRegister(IContainerBuilder builder);
+    }
+#endif
+    
+#if BINDI_SUPPORT_VCONTAINER
+    public sealed class Installation
+    {
+        readonly Type _installerType;
+        
+        public Installation(Type installerType)
+        {
+            _installerType = installerType;
+        }
+        
+        public IInstallable GetInstaller(IObjectResolver scope)
+        {
+            var installer = Activator.CreateInstance(_installerType);
+            scope.Inject(installer);
+            return (IInstallable)installer;
+        }
     }
 #endif
     
@@ -858,11 +915,13 @@ SOFTWARE.
     {
         readonly BinDiOptions _binDiOptions;
         readonly RegistrationProvider _registrationProvider;
+        readonly IObjectResolver _scope;
         
-        public RegistrationBinder(BinDiOptions binDiOptions, RegistrationProvider registrationProvider)
+        public RegistrationBinder(BinDiOptions binDiOptions, RegistrationProvider registrationProvider, IObjectResolver scope)
         {
             _binDiOptions = binDiOptions;
             _registrationProvider = registrationProvider;
+            _scope = scope;
         }
         
         public void Bind(IContainerBuilder builder)
@@ -879,14 +938,25 @@ SOFTWARE.
         
         void RegisterGlobalScopeModules(IContainerBuilder builder, string scopeName)
         {
+            var installations = _registrationProvider.GetInstallation(GlobalScope.Default);
+            for (var i = 0; i < installations.Count; i++) TryInstall(builder, installations[i], scopeName);
             var registrations = _registrationProvider.GetRegistrations(GlobalScope.Default);
             for (var i = 0; i < registrations.Count; i++) TryRegister(builder, registrations[i], scopeName);
         }
         
         void TryRegisterScopedModules<T>(IContainerBuilder builder, T scope)
         {
+            var installations = _registrationProvider.GetInstallation(scope);
+            for (var i = 0; i < installations.Count; i++) TryInstall(builder, installations[i], _binDiOptions.DomainRegistrationLogEnabled ? scope.ToString() : default);
             var registrations = _registrationProvider.GetRegistrations(scope);
             for (var i = 0; i < registrations.Count; i++) TryRegister(builder, registrations[i], _binDiOptions.DomainRegistrationLogEnabled ? scope.ToString() : default);
+        }
+        
+        void TryInstall(IContainerBuilder builder, Installation installation, string scopeName)
+        {
+            var installer = installation.GetInstaller(_scope);
+            if (! installer.TryInstall(builder)) return;
+            if (_binDiOptions.DomainRegistrationLogEnabled) Debug.Log($"{nameof( BinDI )} installed [{installer}] to [{scopeName}].");
         }
         
         void TryRegister(IContainerBuilder builder, IRegistration registration, string scopeName)
@@ -898,7 +968,7 @@ SOFTWARE.
         public static void TryInstall(IContainerBuilder builder)
         {
             if (builder.Exists(typeof( RegistrationBinder ), findParentScopes: true)) return;
-            builder.Register<RegistrationBinder>(Lifetime.Singleton);
+            builder.Register<RegistrationBinder>(Lifetime.Scoped);
             BinDiOptions.TryInstall(builder);
             RegistrationProvider.TryInstall(builder);
         }
@@ -916,7 +986,6 @@ SOFTWARE.
             }
             return scope.CreateScope(builder =>
             {
-                registrationBinder.Bind(builder, GlobalScope.Default);
                 foreach (var targetScope in targetScopes)
                 {
                     registrationBinder.Bind(builder, targetScope);
