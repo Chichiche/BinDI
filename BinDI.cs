@@ -9,6 +9,7 @@
 // #undef UNITY_EDITOR
 
 #if BINDI_SUPPORT_VCONTAINER
+using System.Collections.ObjectModel;
 using VContainer;
 using VContainer.Unity;
 #endif
@@ -16,6 +17,9 @@ using VContainer.Unity;
 #if BINDI_SUPPORT_ADDRESSABLE
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
+#if UNITY_EDITOR
+using UnityEditor.AddressableAssets;
+#endif
 #endif
 
 #if UNITY_EDITOR
@@ -264,243 +268,252 @@ SOFTWARE.
     
     #region EditorWindow
     
-    /*
 #if UNITY_EDITOR && BINDI_SUPPORT_VCONTAINER
     public sealed class BinDiWindow : EditorWindow
     {
+        SearchField _searchField;
         [SerializeField] BinDiHeader _header;
         [SerializeField] BinDiTree _tree;
-    
+        
         [MenuItem("Window/" + nameof( BinDI ))]
         public static void ShowWindow()
         {
-            var window = GetWindow<BinDiWindow>();
-            window.Show();
+            GetWindow<BinDiWindow>().Show();
         }
-    
+        
         void OnEnable()
         {
+            _searchField ??= new SearchField();
             _header ??= new BinDiHeader();
             _header.Refresh();
             _tree ??= new BinDiTree();
             _tree.Refresh(_header);
         }
-    
+        
         void OnGUI()
         {
-            _tree?.View.OnGUI(new Rect(0, 0, position.width, position.height));
+            var searchRect = EditorGUILayout.GetControlRect(false, GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight));
+            _tree.View.searchString = _searchField.OnGUI(searchRect, _tree.View.searchString);
+            var treeViewRect = EditorGUILayout.GetControlRect(false, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
+            _tree.View.OnGUI(treeViewRect);
         }
-    }
-    
-    [Serializable]
-    public sealed class BinDiHeader
-    {
-        readonly MultiColumnHeaderState.Column[] _columns =
+        
+        [Serializable]
+        sealed class BinDiHeader
         {
-            new()
+            readonly MultiColumnHeaderState.Column[] _columns =
             {
-                headerContent = new GUIContent("Type"),
-                width = 100,
-                canSort = false,
-            },
-            new()
-            {
-                headerContent = new GUIContent("Name"),
-                width = 300,
-                canSort = false,
-            },
-            new()
-            {
-                headerContent = new GUIContent("Script"),
-                width = 300,
-                canSort = false,
-            },
-        };
-    
-        [SerializeField] MultiColumnHeaderState _state;
-        public MultiColumnHeader View { get; private set; }
-    
-        public void Refresh()
-        {
-            _state ??= new MultiColumnHeaderState(_columns);
-            View ??= new MultiColumnHeader(_state);
-        }
-    }
-    
-    [Serializable]
-    public sealed class BinDiTree
-    {
-        [SerializeField] TreeViewState _treeViewState;
-        public BinDiTreeView View;
-    
-        public void Refresh(BinDiHeader header)
-        {
-            _treeViewState ??= new TreeViewState();
-            View ??= new BinDiTreeView(_treeViewState, header.View);
-            View.Refresh();
-            View.Reload();
-            View.ExpandAll();
-        }
-    }
-    
-    public sealed class BinDiTreeView : TreeView
-    {
-        readonly FieldInfo _scopedRegistrationListMapField = typeof( RegistrationProvider ).GetField("_scopedRegistrationListMap", BindingFlags.Instance | BindingFlags.NonPublic);
-        readonly FieldInfo _concreteTypeField = typeof( DomainRegistration ).GetField("_concreteType", BindingFlags.Instance | BindingFlags.NonPublic);
-        readonly FieldInfo _subscriberTypeField = typeof( PublishToAttribute ).GetField("_subscriberType", BindingFlags.Instance | BindingFlags.NonPublic);
-        readonly FieldInfo _publisherTypeField = typeof( SubscribeFromAttribute ).GetField("_publisherType", BindingFlags.Instance | BindingFlags.NonPublic);
-        readonly Dictionary<Type, List<Registration>> _scopedRegistrationsMap = new();
-    
-        public BinDiTreeView(TreeViewState state, MultiColumnHeader multiColumnHeader) : base(state, multiColumnHeader)
-        {
-            columnIndexForTreeFoldouts = 1;
-            showAlternatingRowBackgrounds = true;
-        }
-    
-        public void Refresh()
-        {
-            var builder = new ContainerBuilder();
-            builder.RegisterBinDi();
-            using var refreshScope = builder.Build();
-            var registrationProvider = refreshScope.Resolve<RegistrationProvider>();
-            var connectionProvider = refreshScope.Resolve<ConnectionProvider>();
-            var scopedRegistrationListMap = (Dictionary<Type, ReadOnlyCollection<DomainRegistration>>)_scopedRegistrationListMapField.GetValue(registrationProvider);
-            _scopedRegistrationsMap.Clear();
-            foreach (var scopeType in scopedRegistrationListMap.Keys)
-            {
-                _scopedRegistrationsMap.TryAdd(scopeType, new List<Registration>());
-                foreach (var domainRegistration in scopedRegistrationListMap[scopeType])
+                new()
                 {
-                    var registrationType = (Type)_concreteTypeField.GetValue(domainRegistration);
-                    var publisherTypes = Enumerable
-                        .Range(0, connectionProvider.GetSubscribeFromConnectionCount(registrationType))
-                        .Select(i => connectionProvider.GetSubscribeFromConnection(registrationType, i))
-                        .Select(attribute => (Type)_publisherTypeField.GetValue(attribute));
-                    var subscriberTypes = Enumerable
-                        .Range(0, connectionProvider.GetPublishToConnectionCount(registrationType))
-                        .Select(i => connectionProvider.GetPublishToConnection(registrationType, i))
-                        .Select(attribute => (Type)_subscriberTypeField.GetValue(attribute));
-                    _scopedRegistrationsMap[scopeType].Add(new Registration(registrationType.Name, publisherTypes, subscriberTypes));
-                }
+                    headerContent = new GUIContent("Type"),
+                    width = 60,
+                    autoResize = false,
+                    canSort = false,
+                },
+                new()
+                {
+                    headerContent = new GUIContent("Name/Script"),
+                    width = 300,
+                    autoResize = false,
+                    canSort = false,
+                },
+#if BINDI_SUPPORT_ADDRESSABLE
+                new()
+                {
+                    headerContent = new GUIContent("Asset"),
+                    width = 300,
+                    autoResize = false,
+                    canSort = false,
+                },
+#endif
+            };
+            
+            [SerializeField] MultiColumnHeaderState _state;
+            public MultiColumnHeader View { get; private set; }
+            
+            public void Refresh()
+            {
+                _state ??= new MultiColumnHeaderState(_columns);
+                View ??= new MultiColumnHeader(_state);
             }
         }
-    
-        protected override TreeViewItem BuildRoot()
+        
+        [Serializable]
+        sealed class BinDiTree
         {
-            var root = new BinDiTreeViewItem { id = 0, depth = -1 };
-            var id = 1;
-    
-            foreach (var (scope, registrations) in _scopedRegistrationsMap)
+            [SerializeField] TreeViewState _treeViewState;
+            public BinDiTreeView View { get; private set; }
+            
+            public void Refresh(BinDiHeader windowHeader)
             {
-                var scopeItem = new BinDiTreeViewItem { id = id++, displayName = scope.Name, ItemType = ItemType.Scope, Script = FindScript(scope.Name) };
-                root.AddChild(scopeItem);
-                foreach (var registration in registrations)
-                {
-                    var registrationScript = registration.TypeInfo.Script;
-                    var registrationItem = new BinDiTreeViewItem { id = id++, displayName = registration.TypeInfo.TypeName, ItemType = ItemType.Registration, Script = registrationScript, };
-                    scopeItem.AddChild(registrationItem);
-    
-                    if (registration.Connection.Publishers.Length > 0)
-                    {
-                        foreach (var publisherInfo in registration.Connection.Publishers)
-                        {
-                            var publisherScript = publisherInfo.Script;
-                            var publisherItem = new BinDiTreeViewItem { id = id++, displayName = publisherInfo.TypeName, ItemType = ItemType.SubscribeFrom, Script = publisherScript };
-                            registrationItem.AddChild(publisherItem);
-                        }
-                    }
-    
-                    if (registration.Connection.Subscribers.Length > 0)
-                    {
-                        foreach (var subscriberInfo in registration.Connection.Subscribers)
-                        {
-                            var subscriberScript = subscriberInfo.Script;
-                            var subscriberItem = new BinDiTreeViewItem { id = id++, displayName = subscriberInfo.TypeName, ItemType = ItemType.PublishTo, Script = subscriberScript };
-                            registrationItem.AddChild(subscriberItem);
-                        }
-                    }
-                }
-            }
-    
-            SetupDepthsFromParentsAndChildren(root);
-            return root;
-        }
-    
-        protected override void RowGUI(RowGUIArgs args)
-        {
-            for (var i = 0; i < args.GetNumVisibleColumns(); i++)
-            {
-                var item = (BinDiTreeViewItem)args.item;
-                var cellRect = args.GetCellRect(i);
-                var columnIndex = args.GetColumn(i);
-    
-                switch (columnIndex)
-                {
-                    case 0:
-                        GUI.Label(cellRect, item.ItemType.ToString());
-                        break;
-                    case 1:
-                        args.rowRect = cellRect;
-                        base.RowGUI(args);
-                        break;
-                    case 2:
-                        if (item.Script) EditorGUI.ObjectField(cellRect, item.Script, typeof( MonoScript ), false);
-                        break;
-                }
+                _treeViewState ??= new TreeViewState();
+                View ??= new BinDiTreeView(_treeViewState, windowHeader.View);
+                View.Refresh();
+                View.Reload();
             }
         }
-    
-        enum ItemType
-        {
-            Scope,
-            Registration,
-            SubscribeFrom,
-            PublishTo,
-        }
-    
+        
         sealed class BinDiTreeViewItem : TreeViewItem
         {
-            public ItemType ItemType;
+            public string ItemType;
             public MonoScript Script;
+            public UnityObject Asset;
         }
-    
-        sealed class Registration
+        
+        sealed class BinDiTreeViewState
         {
-            public readonly TypeInfo TypeInfo;
-            public readonly Connection Connection;
-    
-            public Registration(string registrationTypeName, IEnumerable<Type> publisherTypes, IEnumerable<Type> subscriberTypes)
+            public BinDiTreeViewItem RootItem { get; private set; }
+            
+            public void Refresh()
             {
-                TypeInfo = new TypeInfo(registrationTypeName);
-                Connection = new Connection(publisherTypes, subscriberTypes);
+                using var refreshScope = new ContainerBuilder().RegisterBinDi().Build();
+                var registrationProvider = refreshScope.Resolve<RegistrationProvider>();
+                var id = 0;
+                RootItem = new BinDiTreeViewItem { id = id++, depth = -1 };
+                foreach (var scope in registrationProvider.Scopes)
+                {
+                    var scopeItem = new BinDiTreeViewItem
+                    {
+                        id = id++,
+                        ItemType = "Scope",
+                        displayName = scope.ToString(),
+                        Script = scope is Type scopeType ? FindScriptOrDefault(scopeType.Name) : null,
+                    };
+                    RootItem.AddChild(scopeItem);
+                    foreach (var installation in registrationProvider.GetInstallation(scope))
+                    {
+                        var installerType = (Type)typeof( Installation ).GetField("_installerType", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(installation);
+                        var installationItem = new BinDiTreeViewItem
+                        {
+                            id = id++,
+                            ItemType = "Installer",
+                            displayName = installerType.Name,
+                            Script = FindScriptOrDefault(installerType.Name),
+                        };
+                        scopeItem.AddChild(installationItem);
+                    }
+                    foreach (var registration in registrationProvider.GetRegistrations(scope))
+                    {
+                        switch (registration)
+                        {
+                            case DomainRegistration domainRegistration:
+                                var domainType = (Type)typeof( DomainRegistration ).GetField("_type", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(domainRegistration);
+                                var domainItem = new BinDiTreeViewItem
+                                {
+                                    id = id++,
+                                    ItemType = "Domain",
+                                    displayName = domainType.Name,
+                                    Script = FindScriptOrDefault(domainType.Name),
+                                };
+                                scopeItem.AddChild(domainItem);
+                                foreach (var publishFrom in domainType.GetCustomAttributes().OfType<PublishFromAttribute>())
+                                {
+                                    var publishFromItem = new BinDiTreeViewItem
+                                    {
+                                        id = id++,
+                                        ItemType = "From",
+                                        displayName = publishFrom.SubscribableType.Name,
+                                        Script = FindScriptOrDefault(publishFrom.SubscribableType.Name),
+                                    };
+                                    domainItem.AddChild(publishFromItem);
+                                }
+                                foreach (var publishTo in domainType.GetCustomAttributes().OfType<PublishToAttribute>())
+                                {
+                                    var publishToItem = new BinDiTreeViewItem
+                                    {
+                                        id = id++,
+                                        ItemType = "To",
+                                        displayName = publishTo.PublishableType.Name,
+                                        Script = FindScriptOrDefault(publishTo.PublishableType.Name),
+                                    };
+                                    domainItem.AddChild(publishToItem);
+                                }
+                                break;
+#if BINDI_SUPPORT_ADDRESSABLE
+                            case AddressableRegistration addressableRegistration:
+                                var assetType = (Type)typeof( AddressableRegistration ).GetField("_type", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(addressableRegistration);
+                                var address = (string)typeof( AddressableRegistration ).GetField("_address", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(addressableRegistration);
+                                var asset = GetAssetAtAddress(address);
+                                var assetItem = new BinDiTreeViewItem
+                                {
+                                    id = id++,
+                                    ItemType = "Asset",
+                                    displayName = assetType.Name,
+                                    Script = FindScriptOrDefault(assetType.Name),
+                                    Asset = asset,
+                                };
+                                scopeItem.AddChild(assetItem);
+                                break;
+                                
+                                static UnityObject GetAssetAtAddress(string address)
+                                {
+                                    if (AddressableAssetSettingsDefaultObject.Settings == null) return null;
+                                    return AddressableAssetSettingsDefaultObject.Settings.groups
+                                        .SelectMany(group => group.entries)
+                                        .Where(entry => entry.address == address)
+                                        .Select(entry => AssetDatabase.GUIDToAssetPath(entry.guid))
+                                        .Select(AssetDatabase.LoadAssetAtPath<UnityObject>)
+                                        .FirstOrDefault();
+                                }
+#endif
+                        }
+                    }
+                }
             }
         }
-    
-        sealed class TypeInfo
+        
+        sealed class BinDiTreeView : TreeView
         {
-            public readonly string TypeName;
-            public readonly MonoScript Script;
-    
-            public TypeInfo(string typeName)
+            readonly BinDiTreeViewState _state = new();
+            
+            public BinDiTreeView(TreeViewState state, MultiColumnHeader multiColumnHeader) : base(state, multiColumnHeader)
             {
-                TypeName = typeName;
-                Script = FindScript(typeName);
+                columnIndexForTreeFoldouts = 1;
+                showAlternatingRowBackgrounds = true;
+            }
+            
+            public void Refresh()
+            {
+                _state.Refresh();
+            }
+            
+            protected override TreeViewItem BuildRoot()
+            {
+                SetupDepthsFromParentsAndChildren(_state.RootItem);
+                return _state.RootItem;
+            }
+            
+            protected override void RowGUI(RowGUIArgs args)
+            {
+                for (var i = 0; i < args.GetNumVisibleColumns(); i++)
+                {
+                    var item = (BinDiTreeViewItem)args.item;
+                    var cellRect = args.GetCellRect(i);
+                    var columnIndex = args.GetColumn(i);
+                    
+                    switch (columnIndex)
+                    {
+                        case 0:
+                            GUI.Label(cellRect, item.ItemType);
+                            break;
+                        case 1:
+                            GUI.enabled = false;
+                            cellRect.xMin += GetContentIndent(args.item);
+                            if (item.Script) EditorGUI.ObjectField(cellRect, item.Script, typeof( MonoScript ), false);
+                            else EditorGUI.LabelField(cellRect, item.displayName);
+                            GUI.enabled = true;
+                            break;
+                        case 2:
+                            GUI.enabled = false;
+                            if (item.Asset) EditorGUI.ObjectField(cellRect, item.Asset, typeof( UnityObject ), false);
+                            GUI.enabled = true;
+                            break;
+                    }
+                }
             }
         }
-    
-        sealed class Connection
-        {
-            public readonly TypeInfo[] Publishers;
-            public readonly TypeInfo[] Subscribers;
-    
-            public Connection(IEnumerable<Type> publisherTypes, IEnumerable<Type> subscriberTypes)
-            {
-                Publishers = publisherTypes.Select(type => new TypeInfo(type.Name)).ToArray();
-                Subscribers = subscriberTypes.Select(type => new TypeInfo(type.Name)).ToArray();
-            }
-        }
-    
-        static MonoScript FindScript(string scriptName)
+        
+        static MonoScript FindScriptOrDefault(string scriptName)
         {
             return AssetDatabase
                 .FindAssets(scriptName)
@@ -511,7 +524,6 @@ SOFTWARE.
         }
     }
 #endif
-    */
     
     #endregion EditorWindow
     
@@ -723,7 +735,10 @@ SOFTWARE.
             for (var i = 0; i < appDomainProvider.ConcreteClassCount; i++) Collect(appDomainProvider.GetConcreteClass(i));
             _scopedRegistrationListMap = _scopedRegistrationListSourceMap.ToDictionary(kv => kv.Key, kv => new ReadOnlyCollection<IRegistration>(kv.Value));
             _scopedInstallationListMap = _scopedInstallationListSourceMap.ToDictionary(kv => kv.Key, kv => new ReadOnlyCollection<Installation>(kv.Value));
+            Scopes = new ReadOnlyCollection<object>(_scopedRegistrationListSourceMap.Keys.Concat(_scopedInstallationListSourceMap.Keys).Distinct().ToArray());
         }
+        
+        public ReadOnlyCollection<object> Scopes { get; }
         
         public ReadOnlyCollection<Installation> GetInstallation<T>(T scope)
         {
@@ -748,6 +763,11 @@ SOFTWARE.
             switch (attribute)
             {
                 case InstallToAttribute installToAttribute:
+                    if (concreteType.GetInterface(nameof( IInstallable )) == null)
+                    {
+                        Debug.LogWarning($"{concreteType} is marked with {nameof( installToAttribute )}, but does not implement {nameof( IInstallable )}.");
+                        return;
+                    }
                     GetScopedInstallationList(installToAttribute.Scope).Add(new Installation(concreteType));
                     break;
                 case RegisterToAttribute registerToAttribute:
@@ -856,14 +876,13 @@ SOFTWARE.
         public AddressableRegistration(Type type, string address)
         {
             _type = type;
-            _address = address;
+            _address = GetAddress(type, address);
         }
         
         public bool TryRegister(IContainerBuilder builder)
         {
             if (builder.Exists(_type)) return false;
-            var actualAddress = GetAddress(_type, _address);
-            var operation = LoadAddressable(actualAddress);
+            var operation = LoadAddressable(_address);
             builder.RegisterDisposeCallback(UnloadCallback(operation));
             if (IsComponent(_type)) RegisterPrefab(builder, _type, operation);
             else RegisterAsset(builder, operation);
@@ -1896,7 +1915,6 @@ SOFTWARE.
         public void Build(GameObject gameObject, IContainerBuilder builder)
         {
             if (! gameObject) return;
-            builder.RegisterBuildCallback(scope => scope.InjectGameObject(gameObject));
             gameObject.GetComponents(_getComponentsBuffer);
             BindComponents(builder);
             var transform = gameObject.transform;
@@ -1925,6 +1943,7 @@ SOFTWARE.
                 var componentType = component.GetType();
                 
                 if (! builder.Exists(componentType)) builder.RegisterInstance(_getComponentsBuffer[i]).AsSelf();
+                builder.RegisterBuildCallback(scope => scope.Inject(component));
                 _registrationBinder.Bind(builder, componentType);
                 _connectionBinder.Bind(builder, component);
             }
