@@ -1,0 +1,8 @@
+{
+    "name": "com.chichiche.bindi",
+    "displayName": "BinDI",
+    "version": "0.8.0",
+    "unity": "2018.3",
+    "description": "Provides automatic binding of pub/sub events.",
+    "license": "MIT"
+}

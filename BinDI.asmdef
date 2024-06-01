@@ -1,0 +1,48 @@
+{
+    "name": "BinDI",
+    "rootNamespace": "BinDI",
+    "references": [
+        "GUID:b0214a6008ed146ff8f122a6a9c2f6cc",
+        "GUID:77221876cc6b8244180b96e320b1bcd4",
+        "GUID:560b04d1a97f54a4e82edc0cbbb69285",
+        "GUID:f51ebe6a0ceec4240a699833d6309b23",
+        "GUID:84651a3751eca9349aac36a66bba901b",
+        "GUID:9e24947de15b9834991c9d8411ea37cf",
+        "GUID:69448af7b92c7f342b298e06a37122aa"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "jp.hadashikick.vcontainer",
+            "expression": "",
+            "define": "BINDI_SUPPORT_VCONTAINER"
+        },
+        {
+            "name": "com.cysharp.r3",
+            "expression": "",
+            "define": "BINDI_SUPPORT_R3"
+        },
+        {
+            "name": "com.neuecc.unirx",
+            "expression": "",
+            "define": "BINDI_SUPPORT_UNIRX"
+        },
+        {
+            "name": "com.cysharp.unitask",
+            "expression": "",
+            "define": "BINDI_SUPPORT_UNITASK"
+        },
+        {
+            "name": "com.unity.addressables",
+            "expression": "",
+            "define": "BINDI_SUPPORT_ADDRESSABLE"
+        }
+    ],
+    "noEngineReferences": false
+}
