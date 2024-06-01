@@ -8,8 +8,11 @@
 // #undef BINDI_SUPPORT_ADDRESSABLE
 // #undef UNITY_EDITOR
 
+
+using System.Diagnostics.CodeAnalysis;
 #if BINDI_SUPPORT_VCONTAINER
 using System.Collections.ObjectModel;
+using Codice.Client.BaseCommands;
 using VContainer;
 using VContainer.Unity;
 #endif
@@ -85,15 +88,30 @@ SOFTWARE.
 #if BINDI_SUPPORT_VCONTAINER
     public static class BinDiInstaller
     {
-        public static T RegisterBinDi<T>(this T builder, BinDiOptions options = null) where T : IContainerBuilder
+        public static T RegisterBinDi<T>(this T builder, BinDiOptions options = null, IAssemblyFilter assemblyFilter = null) where T : IContainerBuilder
         {
-            if (options != null) builder.RegisterInstance(options);
+            var binDiScopeBuilder = new ContainerBuilder();
+            if (options != null) binDiScopeBuilder.RegisterInstance(options);
+            if (assemblyFilter != null) binDiScopeBuilder.RegisterInstance(assemblyFilter);
+            PrefabBuilder.TryInstall(binDiScopeBuilder);
+            using var binDiScope = binDiScopeBuilder.Build();
+            var registrationBinder = binDiScope.Resolve<RegistrationBinder>();
+            registrationBinder.Bind(builder, GlobalScope.Default);
+            builder.RegisterInstance(registrationBinder);
+            builder.RegisterInstance(binDiScope.Resolve<RegistrationProvider>());
+            builder.RegisterInstance(binDiScope.Resolve<ConnectionBinder>());
+            builder.RegisterInstance(binDiScope.Resolve<ConnectionProvider>());
+            builder.RegisterInstance(binDiScope.Resolve<AppDomainProvider>());
+            builder.RegisterInstance(binDiScope.Resolve<IAssemblyFilter>());
+            builder.RegisterInstance(binDiScope.Resolve<BinDiOptions>());
+            ScopedDisposable.TryInstall(builder);
             PrefabBuilder.TryInstall(builder);
             return builder;
         }
     }
 #endif
     
+    [SuppressMessage("ReSharper", "FieldCanBeMadeReadOnly.Global")]
     public sealed class BinDiOptions
     {
         public bool CollectAssemblyLogEnabled = false;
@@ -269,7 +287,8 @@ SOFTWARE.
     #region EditorWindow
     
 #if UNITY_EDITOR && BINDI_SUPPORT_VCONTAINER
-    public sealed class BinDiWindow : EditorWindow
+    // ReSharper disable once InconsistentNaming
+    public sealed class BinDIWindow : EditorWindow
     {
         SearchField _searchField;
         [SerializeField] BinDiHeader _header;
@@ -278,7 +297,7 @@ SOFTWARE.
         [MenuItem("Window/" + nameof( BinDI ))]
         public static void ShowWindow()
         {
-            GetWindow<BinDiWindow>().Show();
+            GetWindow<BinDIWindow>().Show();
         }
         
         void OnEnable()
@@ -292,10 +311,13 @@ SOFTWARE.
         
         void OnGUI()
         {
-            var searchRect = EditorGUILayout.GetControlRect(false, GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight));
-            _tree.View.searchString = _searchField.OnGUI(searchRect, _tree.View.searchString);
-            var treeViewRect = EditorGUILayout.GetControlRect(false, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
-            _tree.View.OnGUI(treeViewRect);
+            _tree.View.searchString = _searchField.OnGUI(EditorGUILayout.GetControlRect(false, GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight)), _tree.View.searchString);
+            _tree.View.OnGUI(EditorGUILayout.GetControlRect(false, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true)));
+            EditorGUILayout.BeginHorizontal();
+            if (GUI.Button(EditorGUILayout.GetControlRect(false, GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight)), "Reload")) _tree.Refresh(_header);
+            if (GUI.Button(EditorGUILayout.GetControlRect(false, GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight)), "Collapse All")) _tree.View.CollapseAll();
+            if (GUI.Button(EditorGUILayout.GetControlRect(false, GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight)), "Expand All")) _tree.View.ExpandAll();
+            EditorGUILayout.EndHorizontal();
         }
         
         [Serializable]
@@ -358,6 +380,7 @@ SOFTWARE.
             public string ItemType;
             public MonoScript Script;
             public UnityObject Asset;
+            public string Address;
         }
         
         sealed class BinDiTreeViewState
@@ -366,8 +389,12 @@ SOFTWARE.
             
             public void Refresh()
             {
-                using var refreshScope = new ContainerBuilder().RegisterBinDi().Build();
+                var refreshScopeBuilder = new ContainerBuilder();
+                RegistrationProvider.TryInstall(refreshScopeBuilder);
+                ConnectionProvider.TryInstall(refreshScopeBuilder);
+                using var refreshScope = refreshScopeBuilder.Build();
                 var registrationProvider = refreshScope.Resolve<RegistrationProvider>();
+                var connectionProvider = refreshScope.Resolve<ConnectionProvider>();
                 var id = 0;
                 RootItem = new BinDiTreeViewItem { id = id++, depth = -1 };
                 foreach (var scope in registrationProvider.Scopes)
@@ -406,27 +433,27 @@ SOFTWARE.
                                     Script = FindScriptOrDefault(domainType.Name),
                                 };
                                 scopeItem.AddChild(domainItem);
-                                foreach (var publishFrom in domainType.GetCustomAttributes().OfType<PublishFromAttribute>())
+                                foreach (var subscribableType in connectionProvider.GetSubscribableTypes(domainType))
                                 {
-                                    var publishFromItem = new BinDiTreeViewItem
+                                    var subscribableItem = new BinDiTreeViewItem
                                     {
                                         id = id++,
                                         ItemType = "From",
-                                        displayName = publishFrom.SubscribableType.Name,
-                                        Script = FindScriptOrDefault(publishFrom.SubscribableType.Name),
+                                        displayName = subscribableType.Name,
+                                        Script = FindScriptOrDefault(subscribableType.Name),
                                     };
-                                    domainItem.AddChild(publishFromItem);
+                                    domainItem.AddChild(subscribableItem);
                                 }
-                                foreach (var publishTo in domainType.GetCustomAttributes().OfType<PublishToAttribute>())
+                                foreach (var publishableType in connectionProvider.GetPublishableTypes(domainType))
                                 {
-                                    var publishToItem = new BinDiTreeViewItem
+                                    var publishableItem = new BinDiTreeViewItem
                                     {
                                         id = id++,
                                         ItemType = "To",
-                                        displayName = publishTo.PublishableType.Name,
-                                        Script = FindScriptOrDefault(publishTo.PublishableType.Name),
+                                        displayName = publishableType.Name,
+                                        Script = FindScriptOrDefault(publishableType.Name),
                                     };
-                                    domainItem.AddChild(publishToItem);
+                                    domainItem.AddChild(publishableItem);
                                 }
                                 break;
 #if BINDI_SUPPORT_ADDRESSABLE
@@ -441,6 +468,7 @@ SOFTWARE.
                                     displayName = assetType.Name,
                                     Script = FindScriptOrDefault(assetType.Name),
                                     Asset = asset,
+                                    Address = address,
                                 };
                                 scopeItem.AddChild(assetItem);
                                 break;
@@ -506,6 +534,7 @@ SOFTWARE.
                         case 2:
                             GUI.enabled = false;
                             if (item.Asset) EditorGUI.ObjectField(cellRect, item.Asset, typeof( UnityObject ), false);
+                            else if (! string.IsNullOrEmpty(item.Address)) EditorGUI.LabelField(cellRect, $"(missing) {item.Address}");
                             GUI.enabled = true;
                             break;
                     }
@@ -616,9 +645,29 @@ SOFTWARE.
     
     #region Registration Modules
     
-    public sealed class WithoutRegistrationAssemblies
+    public interface IAssemblyFilter
     {
-        static readonly string[] _defaultWithoutAssemblyNames =
+        bool CanCollect(string assemblyFullName);
+    }
+    
+    public sealed class AssemblyWhiteListFilter : IAssemblyFilter
+    {
+        readonly string[] _whiteList;
+        
+        public AssemblyWhiteListFilter(params string[] whiteList)
+        {
+            _whiteList = whiteList;
+        }
+        
+        public bool CanCollect(string assemblyFullName)
+        {
+            return _whiteList.Any(assemblyFullName.StartsWith);
+        }
+    }
+    
+    public sealed class AssemblyBlackListFilter : IAssemblyFilter
+    {
+        static readonly string[] _defaultAssemblyBlackList =
         {
             "Unity.",
             "UnityEngine,",
@@ -652,27 +701,21 @@ SOFTWARE.
         
         readonly string[] _assemblyNames;
         
-        public WithoutRegistrationAssemblies(IEnumerable<string> customWithoutAssemblyNames)
+        public AssemblyBlackListFilter(params string[] customAssemblyBlackList)
         {
-            _assemblyNames = _defaultWithoutAssemblyNames.Concat(customWithoutAssemblyNames).ToArray();
+            _assemblyNames = _defaultAssemblyBlackList.Concat(customAssemblyBlackList).ToArray();
         }
         
-        // ReSharper disable once UnusedMember.Local
-        WithoutRegistrationAssemblies()
+        public bool CanCollect(string assemblyFullName)
         {
-            _assemblyNames = _defaultWithoutAssemblyNames;
-        }
-        
-        public bool Contains(string assemblyFullName)
-        {
-            return _assemblyNames.Any(assemblyFullName.StartsWith);
+            return ! _assemblyNames.Any(assemblyFullName.StartsWith);
         }
         
 #if BINDI_SUPPORT_VCONTAINER
         public static void TryInstall(IContainerBuilder builder)
         {
-            if (builder.Exists(typeof( WithoutRegistrationAssemblies ), findParentScopes: true)) return;
-            builder.RegisterInstance(new WithoutRegistrationAssemblies());
+            if (builder.Exists(typeof( IAssemblyFilter ), includeInterfaceTypes: true, findParentScopes: true)) return;
+            builder.Register<IAssemblyFilter, AssemblyBlackListFilter>(Lifetime.Singleton).WithParameter(Array.Empty<string>());
         }
 #endif
     }
@@ -680,13 +723,13 @@ SOFTWARE.
     public sealed class AppDomainProvider
     {
         readonly BinDiOptions _binDiOptions;
-        readonly WithoutRegistrationAssemblies _withoutRegistrationAssemblies;
+        readonly IAssemblyFilter _assemblyFilter;
         readonly Type[] _concreteClasses;
         
-        public AppDomainProvider(BinDiOptions binDiOptions, WithoutRegistrationAssemblies withoutRegistrationAssemblies)
+        public AppDomainProvider(BinDiOptions binDiOptions, IAssemblyFilter assemblyFilter)
         {
             _binDiOptions = binDiOptions;
-            _withoutRegistrationAssemblies = withoutRegistrationAssemblies;
+            _assemblyFilter = assemblyFilter;
             _concreteClasses = CollectDomainConcreteClasses().ToArray();
         }
         
@@ -700,7 +743,7 @@ SOFTWARE.
         
         IEnumerable<Type> CollectAssemblyConcreteClasses(Assembly assembly)
         {
-            if (_withoutRegistrationAssemblies.Contains(assembly.FullName)) yield break;
+            if (! _assemblyFilter.CanCollect(assembly.FullName)) yield break;
             if (_binDiOptions.CollectAssemblyLogEnabled) Debug.Log($"BinDI collect assembly concrete types from {assembly.FullName}.");
             foreach (var definedType in assembly.DefinedTypes)
             {
@@ -715,7 +758,7 @@ SOFTWARE.
             if (builder.Exists(typeof( AppDomainProvider ))) return;
             builder.Register<AppDomainProvider>(Lifetime.Singleton);
             BinDiOptions.TryInstall(builder);
-            WithoutRegistrationAssemblies.TryInstall(builder);
+            AssemblyBlackListFilter.TryInstall(builder);
         }
 #endif
     }
@@ -896,6 +939,24 @@ SOFTWARE.
         
         static AsyncOperationHandle<UnityObject> LoadAddressable(string address)
         {
+#if !UNITY_EDITOR
+            if (AddressableAssetSettingsDefaultObject.Settings == null)
+            {
+                throw new InvalidOperationException("Addressable asset system is not set up.");
+            }
+            
+            var asset = AddressableAssetSettingsDefaultObject.Settings.groups
+                .SelectMany(group => group.entries)
+                .Where(entry => entry.address == address)
+                .Select(entry => AssetDatabase.GUIDToAssetPath(entry.guid))
+                .Select(AssetDatabase.LoadAssetAtPath<UnityObject>)
+                .FirstOrDefault();
+            
+            if (asset == null)
+            {
+                throw new MissingReferenceException($"Addressable asset with address [{address}] was not found.");
+            }
+#endif
             var operation = Addressables.LoadAssetAsync<UnityObject>(address);
             operation.WaitForCompletion();
             return operation;
@@ -903,11 +964,7 @@ SOFTWARE.
         
         static Action<IObjectResolver> UnloadCallback(AsyncOperationHandle<UnityObject> operation)
         {
-            return _ =>
-            {
-                Debug.Log("◆終了時に呼ばれるか確認！");
-                Addressables.Release(operation);
-            };
+            return _ => Addressables.Release(operation);
         }
         
         static bool IsComponent(Type type)
@@ -943,32 +1000,24 @@ SOFTWARE.
             _scope = scope;
         }
         
-        public void Bind(IContainerBuilder builder)
-        {
-            RegisterGlobalScopeModules(builder, "Global");
-        }
-        
         public void Bind<T>(IContainerBuilder builder, T scope)
         {
             if (scope == null) return;
-            RegisterGlobalScopeModules(builder, _binDiOptions.DomainRegistrationLogEnabled ? scope.ToString() : default);
-            TryRegisterScopedModules(builder, scope);
+            var scopeName = GetScopeName(scope);
+            TryRegisterScopedModules(builder, scope, scopeName);
         }
         
-        void RegisterGlobalScopeModules(IContainerBuilder builder, string scopeName)
+        string GetScopeName<T>(T scope)
         {
-            var installations = _registrationProvider.GetInstallation(GlobalScope.Default);
-            for (var i = 0; i < installations.Count; i++) TryInstall(builder, installations[i], scopeName);
-            var registrations = _registrationProvider.GetRegistrations(GlobalScope.Default);
-            for (var i = 0; i < registrations.Count; i++) TryRegister(builder, registrations[i], scopeName);
+            return _binDiOptions.DomainRegistrationLogEnabled ? scope.ToString() : default;
         }
         
-        void TryRegisterScopedModules<T>(IContainerBuilder builder, T scope)
+        void TryRegisterScopedModules<T>(IContainerBuilder builder, T scope, string scopeName)
         {
             var installations = _registrationProvider.GetInstallation(scope);
-            for (var i = 0; i < installations.Count; i++) TryInstall(builder, installations[i], _binDiOptions.DomainRegistrationLogEnabled ? scope.ToString() : default);
+            for (var i = 0; i < installations.Count; i++) TryInstall(builder, installations[i], scopeName);
             var registrations = _registrationProvider.GetRegistrations(scope);
-            for (var i = 0; i < registrations.Count; i++) TryRegister(builder, registrations[i], _binDiOptions.DomainRegistrationLogEnabled ? scope.ToString() : default);
+            for (var i = 0; i < registrations.Count; i++) TryRegister(builder, registrations[i], scopeName);
         }
         
         void TryInstall(IContainerBuilder builder, Installation installation, string scopeName)
@@ -994,9 +1043,9 @@ SOFTWARE.
     }
 #endif
     
-#if BINDI_SUPPORT_VCONTAINER
     public static class RegistrationUtil
     {
+#if BINDI_SUPPORT_VCONTAINER
         public static IScopedObjectResolver CreateBinDiScope(this IObjectResolver scope, params object[] targetScopes)
         {
             if (! scope.TryResolve<RegistrationBinder>(out var registrationBinder))
@@ -1011,8 +1060,8 @@ SOFTWARE.
                 }
             });
         }
-    }
 #endif
+    }
     
     #endregion Registration Modules
     
@@ -1081,11 +1130,11 @@ SOFTWARE.
     #region Connection Attributes
     
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-    public sealed class PublishToAttribute : Attribute
+    public sealed class SubscribeToAttribute : Attribute
     {
         public Type PublishableType { get; }
         
-        public PublishToAttribute(Type publishableType)
+        public SubscribeToAttribute(Type publishableType)
         {
             PublishableType = publishableType;
         }
@@ -1113,8 +1162,8 @@ SOFTWARE.
         Observer<Unit> _observer;
         bool _disposed;
         
-        public Observable<Unit> AsObservable => _subject;
-        public Observer<Unit> AsObserver => _observer ??= _subject.AsObserver();
+        public Observable<Unit> AsObservable() => _subject;
+        public Observer<Unit> AsObserver() => _observer ??= _subject.AsObserver();
         
         public void Publish()
         {
@@ -1140,8 +1189,8 @@ SOFTWARE.
         readonly Subject<Unit> _subject = new();
         bool _disposed;
     
-        public IObservable<Unit> AsObservable => _subject;
-        public IObserver<Unit> AsObserver => _subject;
+        public IObservable<Unit> AsObservable() => _subject;
+        public IObserver<Unit> AsObserver() => _subject;
     
         public void Publish()
         {
@@ -1199,8 +1248,8 @@ SOFTWARE.
         Observer<T> _observer;
         bool _disposed;
         
-        public Observable<T> AsObservable => _subject;
-        public Observer<T> AsObserver => _observer ??= _subject.AsObserver();
+        public Observable<T> AsObservable() => _subject;
+        public Observer<T> AsObserver() => _observer ??= _subject.AsObserver();
         
         public void Publish(T value)
         {
@@ -1233,8 +1282,8 @@ SOFTWARE.
         readonly Subject<T> _subject = new();
         bool _disposed;
     
-        public IObservable<T> AsObservable => _subject;
-        public IObserver<T> AsObserver => _subject;
+        public IObservable<T> AsObservable() => _subject;
+        public IObserver<T> AsObserver() => _subject;
     
         public void Publish(T value)
         {
@@ -1378,8 +1427,8 @@ SOFTWARE.
         Observer<T> _observer;
         bool _disposed;
         
-        public Observable<T> AsObservable => _property;
-        public Observer<T> AsObserver => _observer ??= _property.AsObserver();
+        public Observable<T> AsObservable() => _property;
+        public Observer<T> AsObserver() => _observer ??= _property.AsObserver();
         
         public bool HasValue { get; private set; }
         public T Value => _property.Value;
@@ -1420,8 +1469,8 @@ SOFTWARE.
         IObserver<T> _observer;
         bool _disposed;
     
-        public IObservable<T> AsObservable => _property;
-        public IObserver<T> AsObserver => _observer ??= Observer.Create<T>(value => _property.Value = value);
+        public IObservable<T> AsObservable() => _property;
+        public IObserver<T> AsObserver() => _observer ??= Observer.Create<T>(value => _property.Value = value);
     
         public bool HasValue { get; private set; }
         public T Value => _property.Value;
@@ -1496,7 +1545,7 @@ SOFTWARE.
         readonly ReactiveProperty<T> _property = new();
         bool _disposed;
         
-        public Observable<T> AsObservable => _property;
+        public Observable<T> AsObservable() => _property;
         
         public bool HasValue { get; private set; }
         public T Value => _property.Value;
@@ -1532,7 +1581,7 @@ SOFTWARE.
         readonly ReactiveProperty<T> _property = new();
         bool _disposed;
     
-        public IObservable<T> AsObservable => _property;
+        public IObservable<T> AsObservable() => _property;
     
         public bool HasValue { get; private set; }
         public T Value => _property.Value;
@@ -1675,8 +1724,8 @@ SOFTWARE.
         {
             switch (attribute)
             {
-                case PublishToAttribute publishToAttribute:
-                    CollectPublishToConnection(concreteClass, publishToAttribute);
+                case SubscribeToAttribute subscribeToAttribute:
+                    CollectSubscribeToConnection(concreteClass, subscribeToAttribute);
                     break;
                 case PublishFromAttribute publishFromAttribute:
                     CollectPublishFromConnection(concreteClass, publishFromAttribute);
@@ -1684,22 +1733,36 @@ SOFTWARE.
             }
         }
         
-        void CollectPublishToConnection(Type concreteClass, PublishToAttribute publishToAttribute)
+        void CollectSubscribeToConnection(Type subscribableType, SubscribeToAttribute subscribeToAttribute)
         {
-            if (! _subscribableTypesSourceMap.ContainsKey(publishToAttribute.PublishableType))
-            {
-                _subscribableTypesSourceMap.Add(publishToAttribute.PublishableType, new List<Type>());
-            }
-            _subscribableTypesSourceMap[publishToAttribute.PublishableType].Add(concreteClass);
+            AddPublishableTypes(subscribableType, subscribeToAttribute.PublishableType);
+            AddSubscribableTypes(subscribeToAttribute.PublishableType, subscribableType);
         }
         
-        void CollectPublishFromConnection(Type concreteClass, PublishFromAttribute publishFromAttribute)
+        void CollectPublishFromConnection(Type publishableType, PublishFromAttribute publishFromAttribute)
         {
-            if (! _publishableTypesSourceMap.ContainsKey(publishFromAttribute.SubscribableType))
+            AddSubscribableTypes(publishableType, publishFromAttribute.SubscribableType);
+            AddPublishableTypes(publishFromAttribute.SubscribableType, publishableType);
+        }
+        
+        void AddPublishableTypes(Type subscribableType, Type publishableType)
+        {
+            if (! _publishableTypesSourceMap.ContainsKey(subscribableType))
             {
-                _publishableTypesSourceMap.Add(publishFromAttribute.SubscribableType, new List<Type>());
+                _publishableTypesSourceMap.Add(subscribableType, new List<Type>());
             }
-            _publishableTypesSourceMap[publishFromAttribute.SubscribableType].Add(concreteClass);
+            if (_publishableTypesSourceMap[subscribableType].Contains(publishableType)) return;
+            _publishableTypesSourceMap[subscribableType].Add(publishableType);
+        }
+        
+        void AddSubscribableTypes(Type publishableType, Type subscribableType)
+        {
+            if (! _subscribableTypesSourceMap.ContainsKey(publishableType))
+            {
+                _subscribableTypesSourceMap.Add(publishableType, new List<Type>());
+            }
+            if (_subscribableTypesSourceMap[publishableType].Contains(subscribableType)) return;
+            _subscribableTypesSourceMap[publishableType].Add(subscribableType);
         }
         
 #if BINDI_SUPPORT_VCONTAINER
@@ -1734,19 +1797,15 @@ SOFTWARE.
             if (publishableTypes.Count + subscribableTypes.Count == 0) return;
             builder.RegisterBuildCallback(scope =>
             {
-                if (! scope.TryResolve<IScopedDisposable>(out var scopedDisposable))
-                {
-                    throw new InvalidOperationException($"{nameof( IScopedDisposable )} is not registered in the current scope.");
-                }
                 for (var i = 0; i < publishableTypes.Count; i++)
                 {
                     if (! scope.TryResolve(publishableTypes[i], out var publishable)) continue;
-                    Connect(instance, publishable).AddTo(scopedDisposable);
+                    Connect(instance, publishable).AddTo(scope);
                 }
                 for (var i = 0; i < subscribableTypes.Count; i++)
                 {
                     if (! scope.TryResolve(subscribableTypes[i], out var subscribable)) continue;
-                    Connect(subscribable, instance).AddTo(scopedDisposable);
+                    Connect(subscribable, instance).AddTo(scope);
                 }
             });
         }
@@ -1754,10 +1813,10 @@ SOFTWARE.
         IDisposable Connect(object subscribable, object publishable)
         {
             if (subscribable is ISubscribable voidSubscribable && publishable is IPublishable voidPublishable) return ConnectVoidPubSub(voidSubscribable, voidPublishable);
-            if (TryGetGenericArgument(subscribable.GetType(), typeof( IPublishable<> ), out var valueType)) return ConnectValuePubSub(valueType, subscribable, publishable);
+            if (TryGetGenericArgument(subscribable.GetType(), typeof( ISubscribable<> ), out var valueType)) return ConnectValuePubSub(valueType, subscribable, publishable);
 #if BINDI_SUPPORT_UNITASK
             if (subscribable is IAsyncSubscribable asyncSubscribable && publishable is IAsyncPublishable asyncPublishable) return ConnectAsyncVoidPubSub(asyncSubscribable, asyncPublishable);
-            if (TryGetGenericArgument(subscribable.GetType(), typeof( IAsyncPublishable<> ), out var asyncValueType)) return ConnectAsyncValuePubSub(asyncValueType, subscribable, publishable);
+            if (TryGetGenericArgument(subscribable.GetType(), typeof( ISubscribable<> ), out var asyncValueType)) return ConnectAsyncValuePubSub(asyncValueType, subscribable, publishable);
 #endif
             throw new ArgumentException($"Failed to connect [{subscribable}] to [{publishable}].");
         }
@@ -1824,6 +1883,7 @@ SOFTWARE.
         {
             if (builder.Exists(typeof( ConnectionBinder ), findParentScopes: true)) return;
             builder.Register<ConnectionBinder>(Lifetime.Singleton);
+            BinDiOptions.TryInstall(builder);
             ConnectionProvider.TryInstall(builder);
         }
     }
@@ -1891,7 +1951,7 @@ SOFTWARE.
 #if BINDI_SUPPORT_VCONTAINER
     public sealed class GameObjectScopeBuilder
     {
-        readonly List<MonoBehaviour> _getComponentsBuffer = new( 16 );
+        readonly List<Component> _getComponentsBuffer = new( 1024 );
         readonly RegistrationBinder _registrationBinder;
         readonly ConnectionBinder _connectionBinder;
         readonly IObjectResolver _scope;
@@ -1905,7 +1965,7 @@ SOFTWARE.
         
         public IScopedObjectResolver Build(GameObject gameObject)
         {
-            if (gameObject == null) return default;
+            if (! gameObject) return default;
             var scope = _scope.CreateScope(builder => Build(gameObject, builder));
             if (gameObject.TryGetComponent<OnDestroyTrigger>(out var onDestroyTrigger)) onDestroyTrigger.OnDestroyHandler = scope.Dispose;
             else gameObject.AddComponent<OnDestroyTrigger>().OnDestroyHandler = scope.Dispose;
@@ -1915,10 +1975,21 @@ SOFTWARE.
         public void Build(GameObject gameObject, IContainerBuilder builder)
         {
             if (! gameObject) return;
+            if (! builder.Exists(typeof( GameObject ))) builder.RegisterInstance(gameObject);
+            RegisterChildComponents(gameObject, builder);
             gameObject.GetComponents(_getComponentsBuffer);
             BindComponents(builder);
             var transform = gameObject.transform;
             for (var i = 0; i < transform.childCount; i++) TryBuildChild(builder, transform.GetChild(i));
+        }
+        
+        void RegisterChildComponents(GameObject gameObject, IContainerBuilder builder)
+        {
+            gameObject.GetComponentsInChildren(_getComponentsBuffer);
+            for (var i = 0; i < _getComponentsBuffer.Count; i++)
+            {
+                if (! builder.Exists(_getComponentsBuffer[i].GetType())) builder.RegisterInstance(_getComponentsBuffer[i]).AsSelf();
+            }
         }
         
         void TryBuildChild(IContainerBuilder builder, Transform child)
@@ -1941,8 +2012,6 @@ SOFTWARE.
             {
                 var component = _getComponentsBuffer[i];
                 var componentType = component.GetType();
-                
-                if (! builder.Exists(componentType)) builder.RegisterInstance(_getComponentsBuffer[i]).AsSelf();
                 builder.RegisterBuildCallback(scope => scope.Inject(component));
                 _registrationBinder.Bind(builder, componentType);
                 _connectionBinder.Bind(builder, component);
