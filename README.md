@@ -148,7 +148,7 @@ public class IncrementButton : MonoBehaviour, ISubscribable
 
 You can open the BinDI window from the `Window/BinDI` menu.
 
-## Classes and Interfaces
+## Feature Modules
 
 The following sections are currently being written and are presented in the author's native language, Japanese.  
 If you are using machine translation, please set the source language to `Japanese`.
