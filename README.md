@@ -148,6 +148,8 @@ public class IncrementButton : MonoBehaviour, ISubscribable
 
 You can open the BinDI window from the `Window/BinDI` menu.
 
+![BinDIWindow](https://github.com/Chichiche/BinDI/assets/165566396/c1459f23-9b65-4852-893d-e8ac94b6f85b)
+
 ## Feature Modules
 
 The following sections are currently being written and are presented in the author's native language, Japanese.  
