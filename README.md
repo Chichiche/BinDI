@@ -148,8 +148,6 @@ public class IncrementButton : MonoBehaviour, ISubscribable
 
 You can open the BinDI window from the `Window/BinDI` menu.
 
-![BinDIWindow](https://github.com/Chichiche/BinDI/assets/165566396/c1459f23-9b65-4852-893d-e8ac94b6f85b)
-
 ## Feature Modules
 
 The following sections are currently being written and are presented in the author's native language, Japanese.  
@@ -157,7 +155,7 @@ If you are using machine translation, please set the source language to `Japanes
 
 ## Dependency registration modules
 
-## `[RegisterToGlobal]`
+### `[RegisterToGlobal]`
 - Required: [VContainer](https://github.com/hadashiA/VContainer)
 
 クラスに `[RegisterToGlobal]` 属性を付与することで、グローバルスコープに登録されます。  
@@ -175,7 +173,7 @@ var scope = builder.Build();
 var module = builder.Resolve<Module>();
 ```
 
-## `[RegisterTo(Scope, Lifetime)]`
+### `[RegisterTo(Scope, Lifetime)]`
 - Required: [VContainer](https://github.com/hadashiA/VContainer)
 
 コンパイル時の定数をスコープに指定することができます。
@@ -199,17 +197,6 @@ enum Sopce
 // Register Enum Scope
 [RegisterTo(Sopce.Scope1)]
 public class DomainModule { }
-```
-```csharp
-// Build Root Scope
-var builder = new ContainerBuilder();
-builder.RegisterBinDi();
-var rootScope = builder.Build();
-
-// Build Scope
-var intScope = rootScope.CreateBinDiScope(1);
-var stringScope = rootScope.CreateBinDiScope("Scope");
-var enumScope = rootScope.CreateBinDiScope(Scope.Scope1);
 ```
 第二引数で生存期間を指定することができます。  
 生存期間を指定しなかった場合のデフォルト値は `Lifetime.Singleton` です。
@@ -237,6 +224,18 @@ public class Module { }
 [RegisterTo(typeof(ScopedComponent))]
 [RegisterTo(scope, Lifetime.Scoped)]
 public class DomainModule { }
+```
+登録されたスコープは、 `CreateBinDiScope` メソッドでビルドすることができます。
+```csharp
+// Build Root Scope
+var builder = new ContainerBuilder();
+builder.RegisterBinDi();
+var rootScope = builder.Build();
+
+// Build Scope
+var intScope = rootScope.CreateBinDiScope(1);
+var stringScope = rootScope.CreateBinDiScope("Scope");
+var enumScope = rootScope.CreateBinDiScope(Scope.Scope1);
 ```
 コンポーネントの型をスコープにすることで、様々な機能を利用することができます。  
 コンポーネントの型をスコープにした場合のスコープのビルド方法については、`GameObjectScopeBuilder` および `PrefabBuilder` の項目で詳しく説明します。  
@@ -281,7 +280,7 @@ public class Presenter : IInitializable
 }
 ```
 
-## `IInstallable` `[InstallToGlobal]` `[InstallTo(Scope)]`
+### `[InstallToGlobal]` `[InstallTo(Scope)]` `IInstallable`
 - Required: [VContainer](https://github.com/hadashiA/VContainer)
 
 `[InstallToGlobal]` 属性もしくは `[InstallTo(Scope)]` 属性を付与し、 `IInstallable` インターフェースを実装することで、インストーラーを定義することができます。    
@@ -303,7 +302,7 @@ public class ModuleInstaller : IInstallable
 }
 ```
 
-## `[RegisterAddressableToGlobal(Address)]` `[RegisterAddressableTo(Scope, Address)]`
+### `[RegisterAddressableToGlobal(Address)]` `[RegisterAddressableTo(Scope, Address)]`
 - Required: [VContainer](https://github.com/hadashiA/VContainer)
 - Required [AddressableSystem](https://docs.unity3d.com/Packages/com.unity.addressables@1.21)
 
@@ -351,8 +350,8 @@ public class ScriptableObjectAsset : ScriptableObject { }
 public class ScriptableObjectAsset : ScriptableObject { }
 ```
 
-## Scope building modules
-## `GameObjectScopeBuilder` `[ScopedComponent]`
+# Scope building modules
+### `GameObjectScopeBuilder` `[ScopedComponent]`
 - Required: [VContainer](https://github.com/hadashiA/VContainer)
 
 `GameObjectScopeBuilder` は直接使用することは少ないモジュールです。  
@@ -372,7 +371,7 @@ scope.BuildGameObjectScope(gameObject);
 - 子階層に `[ScopedComponent]` がアタッチされたコンポーネントが存在した場合、そのコンポーネント以下は別スコープに分割されます。  
   これは、コンポーネント毎に異なるドメインのインスタンスを注入したい場合に役立ちます。実例については最下部のサンプルプロジェクトの項目を参照ください。
 
-## `PrefabBuilder`
+### `PrefabBuilder`
 - Required: [VContainer](https://github.com/hadashiA/VContainer)
 
 `PrefabBuilder.Build(Prefab, Transform, Installation)` を通してGameObjectをインスタンス化すると、内部的に `GameObjectScopeBuilder` が使用され、生成されたインスタンスのスコープが生成され、必要な依存が注入されます。  
@@ -399,7 +398,7 @@ public class ViewSpawner
 
 ## Pub/Sub connection modules
 
-## `IPublishable` `IPublishable<T>`
+### `IPublishable` `IPublishable<T>`
 他から配信 `される` モジュールに実装させるインターフェースです。  
 ジェネリック型のないものは `void Publish()` メソッドを実装します。  
 ジェネリック型のあるものは `void Publish(T value)` メソッドを実装します。  
@@ -430,7 +429,7 @@ public class Publishable : IPublishable<int>
 }
 ```
 
-## `ISubscribable` `ISubscribable<T>`
+### `ISubscribable` `ISubscribable<T>`
 他から `購読可能な` モジュールに実装させるインターフェースです。  
 ジェネリック型のないものは `IDisposable Subscribe(IPublishable publishable)` メソッドを実装します。  
 ジェネリック型のないものは `IDisposable Subscribe(IPublishable<T> publishable)` メソッドを実装します。  
@@ -460,7 +459,7 @@ public class Subscribable : ISubscribable<int>
 }
 ```
 
-## `[PublishFrom(SubscribableType)]`
+### `[PublishFrom(SubscribableType)]`
 - Required: [VContainer](https://github.com/hadashiA/VContainer)
 
 `IPublishable` もしくは `IPublishable<T>` を実装したクラスに `[PublishFrom(SubscribableType)]` 属性を付与することで、  
@@ -517,7 +516,7 @@ public class Publishable : MonoBehaviour, IPublishable<int>
 }
 ```
 
-## `[SubscribeTo(PublishableType)]`
+### `[SubscribeTo(PublishableType)]`
 - Required: [VContainer](https://github.com/hadashiA/VContainer)
 
 `ISubscribable` もしくは `ISubscribable<T>` を実装したクラスに `[SubscribeTo(PublishableType)]` 属性を付与することで、  
@@ -582,7 +581,7 @@ public class Subscribable : MonoBehaviour, ISubscribable<int>
 }
 ```
 
-## `Property<T>` `ReadOnlyProperty<T>`
+### `Property<T>` `ReadOnlyProperty<T>`
 - Optional: [R3](https://github.com/Cysharp/R3) or [UniRx](https://github.com/neuecc/UniRx)
 
 リアクティブプログラミングにおける `ReactiveProperty` に相当します。  
@@ -605,7 +604,7 @@ public class CompositeProperty : ReadOnlyProperty<int>
 }
 ```
 
-## `Broker` `Broker<T>`
+### `Broker` `Broker<T>`
 - Optional: [R3](https://github.com/Cysharp/R3) or [UniRx](https://github.com/neuecc/UniRx)
 
 リアクティブプログラミングにおける `Subject` に相当します。  
@@ -628,7 +627,7 @@ public void VoidBroker : Broker { }
 public void IntBroker : Broker<int> { }
 ```
 
-## `IAsyncPublishable` `IAsyncPublishable<T>` `IAsyncSubscribable` `IAsyncSubscribable<T>` `AsyncBroker` `AsyncBroker<T>`
+### `IAsyncPublishable` `IAsyncPublishable<T>` `IAsyncSubscribable` `IAsyncSubscribable<T>` `AsyncBroker` `AsyncBroker<T>`
 - Required: [UniTask](https://github.com/Cysharp/UniTask)
 
 `Publishable` `Subscribable` の非同期版です。  
@@ -665,7 +664,7 @@ Debug.Log("Publish End");
 
 ## Setup option modules
 
-## `BinDiOptions`
+### `BinDiOptions`
 `RegisterBinDi` メソッドによって `BinDI` をインストールする際、引数に `BinDiOptions` のインスタンスを渡すことができます。  
 `BinDiOptions` は主に `BinDI` のデバッグ機能を有効にするために使用されます。  
 `BinDiOptions` が未指定もしくは `null` の場合、デバッグ機能は無効化されます。
@@ -680,7 +679,7 @@ var binDiOptions = new BinDiOptions()
 builder.RegisterBinDi(binDiOptions);
 ```
 
-## `IAssemblyFilter` `AssemblyWhiteListFilter` `AssemblyBlackListFilter`
+### `IAssemblyFilter` `AssemblyWhiteListFilter` `AssemblyBlackListFilter`
 `RegisterBinDi` メソッドによって `BinDI` をインストールする際、引数に `IAssemblyFilter` のインスタンスを渡すことができます。  
 `IAssemblyFilter` には `bool CanCollect(string assemblyFullName)` が実装されており、 `BinDI` がスキャンするアセンブリを制御するために使用されます。  
 `AssemblyFilter` が未指定もしくは `null` の場合、デフォルトの `AssemblyBlackListFilter` が使用されます。これには `UnityEngine` のアセンブリや `BinDI` とその依存モジュールのアセンブリをスキャンから除外する設定が含まれます。  
