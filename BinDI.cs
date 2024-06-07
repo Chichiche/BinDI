@@ -672,7 +672,7 @@ SOFTWARE.
         
         public bool CanCollect(string assemblyFullName)
         {
-            return _whiteList.Any(assemblyFullName.StartsWith);
+            return _whiteList.Contains(assemblyFullName);
         }
     }
     
