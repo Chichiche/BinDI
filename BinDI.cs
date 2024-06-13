@@ -303,7 +303,7 @@ SOFTWARE.
         [SerializeField] BinDiHeader _header;
         [SerializeField] BinDiTree _tree;
 
-        [MenuItem("Window/" + nameof( BinDI ))]
+        [MenuItem("Window/BinDI")]
         public static void ShowWindow()
         {
             GetWindow<BinDIWindow>().Show();
@@ -1033,13 +1033,13 @@ SOFTWARE.
         {
             var installer = installation.GetInstaller(_scope);
             if (! installer.TryInstall(builder)) return;
-            if (_binDiOptions.DomainRegistrationLogEnabled) Debug.Log($"{nameof( BinDI )} installed [{installer}] to [{scopeName}].");
+            if (_binDiOptions.DomainRegistrationLogEnabled) Debug.Log($"BinDI installed [{installer}] to [{scopeName}].");
         }
 
         void TryRegister(IContainerBuilder builder, IRegistration registration, string scopeName)
         {
             if (! registration.TryRegister(builder)) return;
-            if (_binDiOptions.DomainRegistrationLogEnabled) Debug.Log($"{nameof( BinDI )} registered [{registration.GetType().GetField("_type", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(registration)}] to [{scopeName}].");
+            if (_binDiOptions.DomainRegistrationLogEnabled) Debug.Log($"BinDI registered [{registration.GetType().GetField("_type", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(registration)}] to [{scopeName}].");
         }
 
         public static void TryInstall(IContainerBuilder builder)
@@ -1963,7 +1963,7 @@ SOFTWARE.
         IDisposable ConnectVoidPubSub(ISubscribable subscribable, IPublishable publishable)
         {
             var connection = subscribable.Subscribe(publishable);
-            if (_binDiOptions.PubSubConnectionLogEnabled) Debug.Log($"{nameof( BinDI )} connected [{subscribable}] to [{publishable}].");
+            if (_binDiOptions.PubSubConnectionLogEnabled) Debug.Log($"BinDI connected [{subscribable}] to [{publishable}].");
             return connection;
         }
 
@@ -1981,7 +1981,7 @@ SOFTWARE.
         IDisposable ConnectAsyncVoidPubSub(IAsyncSubscribable subscribable, IAsyncPublishable publishable)
         {
             var connection = subscribable.Subscribe(publishable);
-            if (_binDiOptions.PubSubConnectionLogEnabled) Debug.Log($"{nameof( BinDI )} connected [{subscribable}] to [{publishable}].");
+            if (_binDiOptions.PubSubConnectionLogEnabled) Debug.Log($"BinDI connected [{subscribable}] to [{publishable}].");
             return connection;
         }
 
@@ -2000,7 +2000,7 @@ SOFTWARE.
         {
             _subscribeArguments[0] = publishable;
             var connection = (IDisposable)subscribeMethod.Invoke(subscribable, _subscribeArguments);
-            if (_binDiOptions.PubSubConnectionLogEnabled) Debug.Log($"{nameof( BinDI )} connected [{subscribable}] to [{publishable}].");
+            if (_binDiOptions.PubSubConnectionLogEnabled) Debug.Log($"BinDI connected [{subscribable}] to [{publishable}].");
             return connection;
         }
 
