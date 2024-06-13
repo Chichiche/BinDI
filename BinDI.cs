@@ -40,7 +40,7 @@ using Cysharp.Threading.Tasks;
 namespace BinDI
 {
     #region Lisence
-    
+
 /*
 MIT License
 
@@ -64,11 +64,11 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-    
+
     #endregion Lisence
-    
+
     #region Usings
-    
+
     using System;
     using System.Collections.Generic;
     using System.Collections.ObjectModel;
@@ -77,14 +77,14 @@ SOFTWARE.
     using System.Reflection;
     using UnityEngine;
     using UnityObject = UnityEngine.Object;
-    
+
     #endregion Usings
-    
+
     // ReSharper disable once InconsistentNaming
     internal static class BinDI { }
-    
+
     #region Installation
-    
+
     public static class BinDiInstaller
     {
 #if BINDI_SUPPORT_VCONTAINER
@@ -93,7 +93,7 @@ SOFTWARE.
             return builder.RegisterBinDi(options: null, assemblyFilter);
         }
 #endif
-        
+
 #if BINDI_SUPPORT_VCONTAINER
         // ReSharper disable once MemberCanBePrivate.Global
         public static T RegisterBinDi<T>(this T builder, BinDiOptions options = null, IAssemblyFilter assemblyFilter = null) where T : IContainerBuilder
@@ -117,18 +117,18 @@ SOFTWARE.
         }
 #endif
     }
-    
+
     public sealed class BinDiOptions
     {
         // ReSharper disable once FieldCanBeMadeReadOnly.Global
         public bool CollectAssemblyLogEnabled = false;
-        
+
         // ReSharper disable once FieldCanBeMadeReadOnly.Global
         public bool DomainRegistrationLogEnabled = false;
-        
+
         // ReSharper disable once FieldCanBeMadeReadOnly.Global
         public bool PubSubConnectionLogEnabled = false;
-        
+
 #if BINDI_SUPPORT_VCONTAINER
         public static void TryInstall(IContainerBuilder builder)
         {
@@ -138,29 +138,29 @@ SOFTWARE.
         }
 #endif
     }
-    
+
     #endregion Installation
-    
+
     #region Disposables
-    
+
     public sealed class EmptyDisposable : IDisposable
     {
         public static readonly IDisposable Default = new EmptyDisposable();
         public void Dispose() { }
     }
-    
+
     public sealed class RemoveDisposable<T> : IDisposable
     {
         readonly List<T> _list;
         readonly T _value;
         bool _disposed;
-        
+
         public RemoveDisposable(List<T> list, T value)
         {
             _list = list;
             _value = value;
         }
-        
+
         public void Dispose()
         {
             if (_disposed) return;
@@ -168,13 +168,13 @@ SOFTWARE.
             _disposed = true;
         }
     }
-    
+
     public interface IScopedDisposable
     {
         void Add(IDisposable disposable);
         void AddRange(IEnumerable<IDisposable> disposables);
     }
-    
+
     public sealed class ScopedDisposable : IScopedDisposable, IDisposable
     {
 #if BINDI_SUPPORT_R3
@@ -199,12 +199,12 @@ SOFTWARE.
         }
 #elif BINDI_SUPPORT_UNIRX
         readonly CompositeDisposable _compositeDisposable = new();
-        
+
         public void Add(IDisposable disposable)
         {
             _compositeDisposable.Add(disposable);
         }
-        
+
         public void AddRange(IEnumerable<IDisposable> disposables)
         {
             foreach (var disposable in disposables)
@@ -212,7 +212,7 @@ SOFTWARE.
                 _compositeDisposable.Add(disposable);
             }
         }
-        
+
         public void Dispose()
         {
             _compositeDisposable.Dispose();
@@ -240,7 +240,7 @@ SOFTWARE.
             _disposables.Clear();
         }
 #endif
-        
+
 #if BINDI_SUPPORT_VCONTAINER
         public static void TryInstall(IContainerBuilder builder)
         {
@@ -249,19 +249,19 @@ SOFTWARE.
         }
 #endif
     }
-    
+
 #if BINDI_SUPPORT_VCONTAINER
     public sealed class OnDestroyTrigger : MonoBehaviour
     {
         public Action OnDestroyHandler;
-        
+
         void OnDestroy()
         {
             OnDestroyHandler?.Invoke();
         }
     }
 #endif
-    
+
     public static class DisposableUtil
     {
         public static T AddTo<T>(this T disposable, IScopedDisposable scopedDisposable) where T : IDisposable
@@ -269,7 +269,7 @@ SOFTWARE.
             scopedDisposable.Add(disposable);
             return disposable;
         }
-        
+
 #if BINDI_SUPPORT_VCONTAINER
         // ReSharper disable once MemberCanBePrivate.Global
         public static T AddTo<T>(this T disposable, IObjectResolver scope) where T : IDisposable
@@ -282,7 +282,7 @@ SOFTWARE.
             return disposable;
         }
 #endif
-        
+
 #if BINDI_SUPPORT_VCONTAINER
         public static IScopedObjectResolver CreateDisposableLinkedChildScope(this IObjectResolver scope, Action<IContainerBuilder> installation = null)
         {
@@ -292,11 +292,11 @@ SOFTWARE.
         }
 #endif
     }
-    
+
     #endregion Disposables
-    
+
     #region EditorWindow
-    
+
 #if UNITY_EDITOR && BINDI_SUPPORT_VCONTAINER
     // ReSharper disable once InconsistentNaming
     public sealed class BinDIWindow : EditorWindow
@@ -304,13 +304,13 @@ SOFTWARE.
         SearchField _searchField;
         [SerializeField] BinDiHeader _header;
         [SerializeField] BinDiTree _tree;
-        
+
         [MenuItem("Window/" + nameof( BinDI ))]
         public static void ShowWindow()
         {
             GetWindow<BinDIWindow>().Show();
         }
-        
+
         void OnEnable()
         {
             _searchField ??= new SearchField();
@@ -319,7 +319,7 @@ SOFTWARE.
             _tree ??= new BinDiTree();
             _tree.Refresh(_header);
         }
-        
+
         void OnGUI()
         {
             _tree.View.searchString = _searchField.OnGUI(EditorGUILayout.GetControlRect(false, GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight)), _tree.View.searchString);
@@ -330,7 +330,7 @@ SOFTWARE.
             if (GUI.Button(EditorGUILayout.GetControlRect(false, GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight)), "Expand All")) _tree.View.ExpandAll();
             EditorGUILayout.EndHorizontal();
         }
-        
+
         [Serializable]
         sealed class BinDiHeader
         {
@@ -360,23 +360,23 @@ SOFTWARE.
                 },
 #endif
             };
-            
+
             [SerializeField] MultiColumnHeaderState _state;
             public MultiColumnHeader View { get; private set; }
-            
+
             public void Refresh()
             {
                 _state ??= new MultiColumnHeaderState(_columns);
                 View ??= new MultiColumnHeader(_state);
             }
         }
-        
+
         [Serializable]
         sealed class BinDiTree
         {
             [SerializeField] TreeViewState _treeViewState;
             public BinDiTreeView View { get; private set; }
-            
+
             public void Refresh(BinDiHeader windowHeader)
             {
                 _treeViewState ??= new TreeViewState();
@@ -385,7 +385,7 @@ SOFTWARE.
                 View.Reload();
             }
         }
-        
+
         sealed class BinDiTreeViewItem : TreeViewItem
         {
             public string ItemType;
@@ -393,11 +393,11 @@ SOFTWARE.
             public UnityObject Asset;
             public string Address;
         }
-        
+
         sealed class BinDiTreeViewState
         {
             public BinDiTreeViewItem RootItem { get; private set; }
-            
+
             public void Refresh()
             {
                 var refreshScopeBuilder = new ContainerBuilder();
@@ -500,28 +500,28 @@ SOFTWARE.
                 }
             }
         }
-        
+
         sealed class BinDiTreeView : TreeView
         {
             readonly BinDiTreeViewState _state = new();
-            
+
             public BinDiTreeView(TreeViewState state, MultiColumnHeader multiColumnHeader) : base(state, multiColumnHeader)
             {
                 columnIndexForTreeFoldouts = 1;
                 showAlternatingRowBackgrounds = true;
             }
-            
+
             public void Refresh()
             {
                 _state.Refresh();
             }
-            
+
             protected override TreeViewItem BuildRoot()
             {
                 SetupDepthsFromParentsAndChildren(_state.RootItem);
                 return _state.RootItem;
             }
-            
+
             protected override void RowGUI(RowGUIArgs args)
             {
                 for (var i = 0; i < args.GetNumVisibleColumns(); i++)
@@ -529,7 +529,7 @@ SOFTWARE.
                     var item = (BinDiTreeViewItem)args.item;
                     var cellRect = args.GetCellRect(i);
                     var columnIndex = args.GetColumn(i);
-                    
+
                     switch (columnIndex)
                     {
                         case 0:
@@ -552,7 +552,7 @@ SOFTWARE.
                 }
             }
         }
-        
+
         static MonoScript FindScriptOrDefault(string scriptName)
         {
             return AssetDatabase
@@ -564,36 +564,36 @@ SOFTWARE.
         }
     }
 #endif
-    
+
     #endregion EditorWindow
-    
+
     #region Registration Attributes
-    
+
 #if BINDI_SUPPORT_VCONTAINER
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     public sealed class InstallToAttribute : Attribute
     {
         public object Scope { get; }
-        
+
         public InstallToAttribute(object scope)
         {
             Scope = scope;
         }
     }
-    
+
     public interface IInstallable
     {
         bool TryInstall(IContainerBuilder builder);
     }
 #endif
-    
+
 #if BINDI_SUPPORT_VCONTAINER
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     public sealed class RegisterToAttribute : Attribute
     {
         public object Scope { get; }
         public Lifetime Lifetime { get; }
-        
+
         public RegisterToAttribute(object scope, Lifetime lifetime = Lifetime.Singleton)
         {
             Scope = scope;
@@ -601,21 +601,21 @@ SOFTWARE.
         }
     }
 #endif
-    
+
 #if BINDI_SUPPORT_VCONTAINER
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class RegisterToGlobalAttribute : Attribute
     {
         public object Scope => GlobalScope.Default;
         public Lifetime Lifetime { get; }
-        
+
         public RegisterToGlobalAttribute(Lifetime lifetime = Lifetime.Singleton)
         {
             Lifetime = lifetime;
         }
     }
 #endif
-    
+
 #if BINDI_SUPPORT_VCONTAINER && BINDI_SUPPORT_ADDRESSABLE
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     public sealed class RegisterAddressableToAttribute : Attribute
@@ -631,7 +631,7 @@ SOFTWARE.
         }
     }
 #endif
-    
+
 #if BINDI_SUPPORT_VCONTAINER && BINDI_SUPPORT_ADDRESSABLE
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class RegisterAddressableToGlobalAttribute : Attribute
@@ -646,36 +646,36 @@ SOFTWARE.
         }
     }
 #endif
-    
+
 #if BINDI_SUPPORT_VCONTAINER
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class ScopedComponentAttribute : Attribute { }
 #endif
-    
+
     #endregion Registration Attributes
-    
+
     #region Registration Modules
-    
+
     public interface IAssemblyFilter
     {
         bool CanCollect(string assemblyFullName);
     }
-    
+
     public sealed class AssemblyWhiteListFilter : IAssemblyFilter
     {
         readonly string[] _whiteList;
-        
+
         public AssemblyWhiteListFilter(params string[] whiteList)
         {
             _whiteList = whiteList;
         }
-        
+
         public bool CanCollect(string assemblyFullName)
         {
             return _whiteList.Contains(assemblyFullName);
         }
     }
-    
+
     public sealed class AssemblyBlackListFilter : IAssemblyFilter
     {
         static readonly string[] _defaultAssemblyBlackList =
@@ -709,19 +709,19 @@ SOFTWARE.
             "UniTask.",
             "BinDi,"
         };
-        
+
         readonly string[] _assemblyNames;
-        
+
         public AssemblyBlackListFilter(params string[] customAssemblyBlackList)
         {
             _assemblyNames = _defaultAssemblyBlackList.Concat(customAssemblyBlackList).ToArray();
         }
-        
+
         public bool CanCollect(string assemblyFullName)
         {
             return ! _assemblyNames.Any(assemblyFullName.StartsWith);
         }
-        
+
 #if BINDI_SUPPORT_VCONTAINER
         public static void TryInstall(IContainerBuilder builder)
         {
@@ -730,28 +730,28 @@ SOFTWARE.
         }
 #endif
     }
-    
+
     public sealed class AppDomainProvider
     {
         readonly BinDiOptions _binDiOptions;
         readonly IAssemblyFilter _assemblyFilter;
         readonly Type[] _concreteClasses;
-        
+
         public AppDomainProvider(BinDiOptions binDiOptions, IAssemblyFilter assemblyFilter)
         {
             _binDiOptions = binDiOptions;
             _assemblyFilter = assemblyFilter;
             _concreteClasses = CollectDomainConcreteClasses().ToArray();
         }
-        
+
         public int ConcreteClassCount => _concreteClasses.Length;
         public Type GetConcreteClass(int index) => _concreteClasses[index];
-        
+
         IEnumerable<Type> CollectDomainConcreteClasses()
         {
             return AppDomain.CurrentDomain.GetAssemblies().SelectMany(CollectAssemblyConcreteClasses);
         }
-        
+
         IEnumerable<Type> CollectAssemblyConcreteClasses(Assembly assembly)
         {
             if (! _assemblyFilter.CanCollect(assembly.FullName)) yield break;
@@ -762,7 +762,7 @@ SOFTWARE.
                 yield return definedType;
             }
         }
-        
+
 #if BINDI_SUPPORT_VCONTAINER
         public static void TryInstall(IContainerBuilder builder)
         {
@@ -773,7 +773,7 @@ SOFTWARE.
         }
 #endif
     }
-    
+
 #if BINDI_SUPPORT_VCONTAINER
     public sealed class RegistrationProvider
     {
@@ -783,7 +783,7 @@ SOFTWARE.
         readonly Dictionary<object, List<IRegistration>> _scopedRegistrationListSourceMap = new() { { GlobalScope.Default, new List<IRegistration>() } };
         readonly Dictionary<object, ReadOnlyCollection<Installation>> _scopedInstallationListMap;
         readonly Dictionary<object, ReadOnlyCollection<IRegistration>> _scopedRegistrationListMap;
-        
+
         public RegistrationProvider(AppDomainProvider appDomainProvider)
         {
             for (var i = 0; i < appDomainProvider.ConcreteClassCount; i++) Collect(appDomainProvider.GetConcreteClass(i));
@@ -791,19 +791,19 @@ SOFTWARE.
             _scopedInstallationListMap = _scopedInstallationListSourceMap.ToDictionary(kv => kv.Key, kv => new ReadOnlyCollection<Installation>(kv.Value));
             Scopes = new ReadOnlyCollection<object>(_scopedRegistrationListSourceMap.Keys.Concat(_scopedInstallationListSourceMap.Keys).Distinct().ToArray());
         }
-        
+
         public ReadOnlyCollection<object> Scopes { get; }
-        
+
         public ReadOnlyCollection<Installation> GetInstallation<T>(T scope)
         {
             return _scopedInstallationListMap.GetValueOrDefault(scope, EmptyInstallations);
         }
-        
+
         public ReadOnlyCollection<IRegistration> GetRegistrations<T>(T scope)
         {
             return _scopedRegistrationListMap.GetValueOrDefault(scope, EmptyRegistrations);
         }
-        
+
         void Collect(Type concreteType)
         {
             foreach (var attribute in concreteType.GetCustomAttributes())
@@ -811,7 +811,7 @@ SOFTWARE.
                 Collect(concreteType, attribute);
             }
         }
-        
+
         void Collect(Type concreteType, Attribute attribute)
         {
             switch (attribute)
@@ -840,7 +840,7 @@ SOFTWARE.
 #endif
             }
         }
-        
+
         List<Installation> GetScopedInstallationList(object scope)
         {
             if (_scopedInstallationListSourceMap.TryGetValue(scope, out var installationList)) return installationList;
@@ -848,7 +848,7 @@ SOFTWARE.
             _scopedInstallationListSourceMap.Add(scope, installationList);
             return installationList;
         }
-        
+
         List<IRegistration> GetScopedRegistrationList(object scope)
         {
             if (_scopedRegistrationListSourceMap.TryGetValue(scope, out var registrationList)) return registrationList;
@@ -856,7 +856,7 @@ SOFTWARE.
             _scopedRegistrationListSourceMap.Add(scope, registrationList);
             return registrationList;
         }
-        
+
         public static void TryInstall(IContainerBuilder builder)
         {
             if (builder.Exists(typeof( RegistrationProvider ), findParentScopes: true)) return;
@@ -865,31 +865,31 @@ SOFTWARE.
         }
     }
 #endif
-    
+
 #if BINDI_SUPPORT_VCONTAINER
     public sealed class GlobalScope
     {
         public static readonly GlobalScope Default = new();
     }
 #endif
-    
+
 #if BINDI_SUPPORT_VCONTAINER
     public interface IRegistration
     {
         bool TryRegister(IContainerBuilder builder);
     }
 #endif
-    
+
 #if BINDI_SUPPORT_VCONTAINER
     public sealed class Installation
     {
         readonly Type _installerType;
-        
+
         public Installation(Type installerType)
         {
             _installerType = installerType;
         }
-        
+
         public IInstallable GetInstaller(IObjectResolver scope)
         {
             var installer = Activator.CreateInstance(_installerType);
@@ -898,19 +898,19 @@ SOFTWARE.
         }
     }
 #endif
-    
+
 #if BINDI_SUPPORT_VCONTAINER
     public sealed class DomainRegistration : IRegistration
     {
         readonly Type _type;
         readonly Lifetime _lifetime;
-        
+
         public DomainRegistration(Type type, Lifetime lifetime)
         {
             _type = type;
             _lifetime = lifetime;
         }
-        
+
         public bool TryRegister(IContainerBuilder builder)
         {
             if (builder.Exists(_type)) return false;
@@ -920,7 +920,7 @@ SOFTWARE.
         }
     }
 #endif
-    
+
 #if BINDI_SUPPORT_VCONTAINER && BINDI_SUPPORT_ADDRESSABLE
     public sealed class AddressableRegistration : IRegistration
     {
@@ -996,33 +996,33 @@ SOFTWARE.
         }
     }
 #endif
-    
+
 #if BINDI_SUPPORT_VCONTAINER
     public sealed class RegistrationBinder
     {
         readonly BinDiOptions _binDiOptions;
         readonly RegistrationProvider _registrationProvider;
         readonly IObjectResolver _scope;
-        
+
         public RegistrationBinder(BinDiOptions binDiOptions, RegistrationProvider registrationProvider, IObjectResolver scope)
         {
             _binDiOptions = binDiOptions;
             _registrationProvider = registrationProvider;
             _scope = scope;
         }
-        
+
         public void Bind<T>(IContainerBuilder builder, T scope)
         {
             if (scope == null) return;
             var scopeName = GetScopeName(scope);
             TryRegisterScopedModules(builder, scope, scopeName);
         }
-        
+
         string GetScopeName<T>(T scope)
         {
             return _binDiOptions.DomainRegistrationLogEnabled ? scope.ToString() : default;
         }
-        
+
         void TryRegisterScopedModules<T>(IContainerBuilder builder, T scope, string scopeName)
         {
             var installations = _registrationProvider.GetInstallation(scope);
@@ -1030,20 +1030,20 @@ SOFTWARE.
             var registrations = _registrationProvider.GetRegistrations(scope);
             for (var i = 0; i < registrations.Count; i++) TryRegister(builder, registrations[i], scopeName);
         }
-        
+
         void TryInstall(IContainerBuilder builder, Installation installation, string scopeName)
         {
             var installer = installation.GetInstaller(_scope);
             if (! installer.TryInstall(builder)) return;
             if (_binDiOptions.DomainRegistrationLogEnabled) Debug.Log($"{nameof( BinDI )} installed [{installer}] to [{scopeName}].");
         }
-        
+
         void TryRegister(IContainerBuilder builder, IRegistration registration, string scopeName)
         {
             if (! registration.TryRegister(builder)) return;
             if (_binDiOptions.DomainRegistrationLogEnabled) Debug.Log($"{nameof( BinDI )} registered [{registration.GetType().GetField("_type", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(registration)}] to [{scopeName}].");
         }
-        
+
         public static void TryInstall(IContainerBuilder builder)
         {
             if (builder.Exists(typeof( RegistrationBinder ), findParentScopes: true)) return;
@@ -1053,13 +1053,13 @@ SOFTWARE.
         }
     }
 #endif
-    
+
     public static class RegistrationUtil
     {
 #if BINDI_SUPPORT_VCONTAINER
         static readonly object[] _scopesArgument = new object[1];
 #endif
-        
+
 #if BINDI_SUPPORT_VCONTAINER
         public static IScopedObjectResolver BuildBinDiScope(this ContainerBuilder builder, object targetScope, Action<IContainerBuilder> installation = null)
         {
@@ -1067,7 +1067,7 @@ SOFTWARE.
             return temporaryScope.CreateBinDiScope(targetScope, installation);
         }
 #endif
-        
+
 #if BINDI_SUPPORT_VCONTAINER
         // ReSharper disable once MemberCanBePrivate.Global
         public static IScopedObjectResolver BuildBinDiScope(this ContainerBuilder builder, IReadOnlyList<object> targetScopes, Action<IContainerBuilder> installation = null)
@@ -1076,7 +1076,7 @@ SOFTWARE.
             return temporaryScope.CreateBinDiScope(targetScopes, installation);
         }
 #endif
-        
+
 #if BINDI_SUPPORT_VCONTAINER
         // ReSharper disable once MemberCanBePrivate.Global
         public static IScopedObjectResolver CreateBinDiScope(this IObjectResolver scope, object targetScope, Action<IContainerBuilder> installation = null)
@@ -1084,7 +1084,7 @@ SOFTWARE.
             return scope.CreateScope(builder => RegisterBinDiScope(builder, scope, targetScope, installation));
         }
 #endif
-        
+
 #if BINDI_SUPPORT_VCONTAINER
         // ReSharper disable once MemberCanBePrivate.Global
         public static IScopedObjectResolver CreateBinDiScope(this IObjectResolver scope, IReadOnlyList<object> targetScopes, Action<IContainerBuilder> installation = null)
@@ -1092,7 +1092,7 @@ SOFTWARE.
             return scope.CreateScope(builder => RegisterBinDiScopes(builder, scope, targetScopes, installation));
         }
 #endif
-        
+
 #if BINDI_SUPPORT_VCONTAINER
         // ReSharper disable once MemberCanBePrivate.Global
         public static IContainerBuilder RegisterBinDiScope(this IContainerBuilder builder, IObjectResolver parentScope, object targetScope, Action<IContainerBuilder> installation = null)
@@ -1101,7 +1101,7 @@ SOFTWARE.
             return RegisterBinDiScopes(builder, parentScope, _scopesArgument, installation);
         }
 #endif
-        
+
 #if BINDI_SUPPORT_VCONTAINER
         // ReSharper disable once MemberCanBePrivate.Global
         public static IContainerBuilder RegisterBinDiScopes(this IContainerBuilder builder, IObjectResolver parentScope, IReadOnlyList<object> targetScopes, Action<IContainerBuilder> installation = null)
@@ -1119,99 +1119,99 @@ SOFTWARE.
         }
 #endif
     }
-    
+
     #endregion Registration Modules
-    
+
     #region Publishable Interfaces
-    
+
     public interface IPublishable
     {
         void Publish();
     }
-    
+
     public interface IPublishable<in T>
     {
         void Publish(T value);
     }
-    
+
 #if BINDI_SUPPORT_UNITASK
     public interface IAsyncPublishable
     {
         UniTask PublishAsync();
     }
 #endif
-    
+
 #if BINDI_SUPPORT_UNITASK
     public interface IAsyncPublishable<in T>
     {
         UniTask PublishAsync(T value);
     }
 #endif
-    
+
     #endregion Publishable Interfaces
-    
+
     #region Subscribable Interfaces
-    
+
     public interface ISubscribable
     {
         IDisposable Subscribe(IPublishable publishable);
     }
-    
+
     public interface ISubscribable<out T>
     {
         IDisposable Subscribe(IPublishable<T> publishable);
     }
-    
+
     public interface IBufferedSubscribable<out T> : ISubscribable<T>
     {
         bool HasValue { get; }
         T Value { get; }
     }
-    
+
 #if BINDI_SUPPORT_UNITASK
     public interface IAsyncSubscribable
     {
         IDisposable Subscribe(IAsyncPublishable asyncPublishable);
     }
 #endif
-    
+
 #if BINDI_SUPPORT_UNITASK
     public interface IAsyncSubscribable<out T>
     {
         IDisposable Subscribe(IAsyncPublishable<T> asyncPublishable);
     }
 #endif
-    
+
     #endregion Subscribable Interfaces
-    
+
     #region Connection Attributes
-    
+
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     public sealed class SubscribeToAttribute : Attribute
     {
         public Type PublishableType { get; }
-        
+
         public SubscribeToAttribute(Type publishableType)
         {
             PublishableType = publishableType;
         }
     }
-    
+
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     public sealed class PublishFromAttribute : Attribute
     {
         public Type SubscribableType { get; }
-        
+
         public PublishFromAttribute(Type subscribableType)
         {
             SubscribableType = subscribableType;
         }
     }
-    
+
     #endregion Connection Attributes
-    
+
     #region Brokers
-    
+
     public class Broker : IPublishable, ISubscribable, IDisposable
     {
 #if BINDI_SUPPORT_R3
@@ -1245,23 +1245,23 @@ SOFTWARE.
 #elif BINDI_SUPPORT_UNIRX
         readonly Subject<Unit> _subject = new();
         bool _disposed;
-        
+
         public IObservable<Unit> AsObservable() => _subject;
         public IObserver<Unit> AsObserver() => _subject;
-        
+
         public void Publish()
         {
             if (_disposed) return;
             _subject.OnNext(Unit.Default);
         }
-        
+
         public IDisposable Subscribe(IPublishable publishable)
         {
             return ! _disposed
                 ? _subject.SubscribeWithState(publishable, static (_, p) => p.Publish())
                 : Disposable.Empty;
         }
-        
+
         public void Dispose()
         {
             if (_disposed) return;
@@ -1297,7 +1297,7 @@ SOFTWARE.
         }
 #endif
     }
-    
+
     public class Broker<T> : ISubscribable, IPublishable<T>, ISubscribable<T>, IDisposable
     {
 #if BINDI_SUPPORT_R3
@@ -1338,30 +1338,30 @@ SOFTWARE.
 #elif BINDI_SUPPORT_UNIRX
         readonly Subject<T> _subject = new();
         bool _disposed;
-        
+
         public IObservable<T> AsObservable() => _subject;
         public IObserver<T> AsObserver() => _subject;
-        
+
         public void Publish(T value)
         {
             if (_disposed) return;
             _subject.OnNext(value);
         }
-        
+
         public IDisposable Subscribe(IPublishable publishable)
         {
             return ! _disposed
                 ? _subject.SubscribeWithState(publishable, static (_, p) => p.Publish())
                 : Disposable.Empty;
         }
-        
+
         public IDisposable Subscribe(IPublishable<T> publishable)
         {
             return ! _disposed
                 ? _subject.SubscribeWithState(publishable, static (value, p) => p.Publish(value))
                 : Disposable.Empty;
         }
-        
+
         public void Dispose()
         {
             if (_disposed) return;
@@ -1405,7 +1405,7 @@ SOFTWARE.
         }
 #endif
     }
-    
+
 #if BINDI_SUPPORT_UNITASK
     public class AsyncBroker : IAsyncPublishable, IAsyncSubscribable, IDisposable
     {
@@ -1443,7 +1443,7 @@ SOFTWARE.
         }
     }
 #endif
-    
+
 #if BINDI_SUPPORT_UNITASK
     public class AsyncBroker<T> : IAsyncPublishable<T>, IAsyncSubscribable<T>, IDisposable
     {
@@ -1472,11 +1472,11 @@ SOFTWARE.
         }
     }
 #endif
-    
+
     #endregion Brokers
-    
+
     #region Properties
-    
+
     public class Property<T> : ISubscribable, IBufferedSubscribable<T>, IPublishable<T>, IDisposable
     {
 #if BINDI_SUPPORT_R3
@@ -1525,13 +1525,13 @@ SOFTWARE.
         readonly ReactiveProperty<T> _property = new();
         IObserver<T> _observer;
         bool _disposed;
-        
+
         public IObservable<T> AsObservable() => _property;
         public IObserver<T> AsObserver() => _observer ??= Observer.Create<T>(value => _property.Value = value);
-        
+
         public bool HasValue { get; private set; }
         public T Value => _property.Value;
-        
+
         public void Publish(T value)
         {
             if (_disposed) return;
@@ -1539,23 +1539,23 @@ SOFTWARE.
             _property.Value = value;
             OnPublished(value);
         }
-        
+
         protected virtual void OnPublished(T value) { }
-        
+
         public IDisposable Subscribe(IPublishable publishable)
         {
             return ! _disposed
                 ? _property.SubscribeWithState(publishable, static (_, p) => p.Publish())
                 : Disposable.Empty;
         }
-        
+
         public IDisposable Subscribe(IPublishable<T> publishable)
         {
             return ! _disposed
                 ? _property.SubscribeWithState(publishable, static (value, p) => p.Publish(value))
                 : Disposable.Empty;
         }
-        
+
         public void Dispose()
         {
             if (_disposed) return;
@@ -1595,7 +1595,7 @@ SOFTWARE.
         }
 #endif
     }
-    
+
     public abstract class ReadOnlyProperty<T> : ISubscribable, IBufferedSubscribable<T>, IDisposable
     {
 #if BINDI_SUPPORT_R3
@@ -1637,33 +1637,33 @@ SOFTWARE.
 #elif BINDI_SUPPORT_UNIRX
         readonly ReactiveProperty<T> _property = new();
         bool _disposed;
-        
+
         public IObservable<T> AsObservable() => _property;
-        
+
         public bool HasValue { get; private set; }
         public T Value => _property.Value;
-        
+
         protected void Publish(T value)
         {
             if (_disposed) return;
             HasValue = true;
             _property.Value = value;
         }
-        
+
         public IDisposable Subscribe(IPublishable publishable)
         {
             return ! _disposed
                 ? _property.SubscribeWithState(publishable, static (_, p) => p.Publish())
                 : Disposable.Empty;
         }
-        
+
         public IDisposable Subscribe(IPublishable<T> publishable)
         {
             if (_disposed) return Disposable.Empty;
             if (HasValue) publishable.Publish(Value);
             return _property.SubscribeWithState(publishable, static (value, p) => p.Publish(value));
         }
-        
+
         void IDisposable.Dispose()
         {
             if (_disposed) return;
@@ -1703,45 +1703,45 @@ SOFTWARE.
         }
 #endif
     }
-    
+
     #endregion Properties
-    
+
     #region Publishables
-    
+
     public sealed class ActionPublishable : IPublishable
     {
         readonly Action _publish;
-        
+
         public ActionPublishable(Action publish)
         {
             _publish = publish;
         }
-        
+
         public void Publish()
         {
             _publish();
         }
     }
-    
+
     public sealed class ActionPublishable<T> : IPublishable<T>
     {
         readonly Action<T> _publish;
-        
+
         public ActionPublishable(Action<T> publish)
         {
             _publish = publish;
         }
-        
+
         public void Publish(T value)
         {
             _publish(value);
         }
     }
-    
+
     #endregion
-    
+
     #region Connection Modules
-    
+
     public sealed class ConnectionProvider
     {
         readonly ReadOnlyCollection<Type> _emptyTypes = new( Array.Empty<Type>() );
@@ -1749,34 +1749,34 @@ SOFTWARE.
         readonly Dictionary<Type, ReadOnlyCollection<Type>> _subscribableTypesMap;
         readonly Dictionary<Type, List<Type>> _publishableTypesSourceMap = new();
         readonly Dictionary<Type, ReadOnlyCollection<Type>> _publishableTypesMap;
-        
+
         public ConnectionProvider(AppDomainProvider appDomainProvider)
         {
             CollectConnections(appDomainProvider);
             _subscribableTypesMap = _subscribableTypesSourceMap.ToDictionary(kv => kv.Key, kv => new ReadOnlyCollection<Type>(kv.Value));
             _publishableTypesMap = _publishableTypesSourceMap.ToDictionary(kv => kv.Key, kv => new ReadOnlyCollection<Type>(kv.Value));
         }
-        
+
         public ReadOnlyCollection<Type> GetSubscribableTypes(Type publishableType)
         {
             return _subscribableTypesMap.GetValueOrDefault(publishableType, _emptyTypes);
         }
-        
+
         public ReadOnlyCollection<Type> GetPublishableTypes(Type subscribableType)
         {
             return _publishableTypesMap.GetValueOrDefault(subscribableType, _emptyTypes);
         }
-        
+
         void CollectConnections(AppDomainProvider appDomainProvider)
         {
             for (var i = 0; i < appDomainProvider.ConcreteClassCount; i++) CollectConnections(appDomainProvider.GetConcreteClass(i));
         }
-        
+
         void CollectConnections(Type concreteClass)
         {
             foreach (var attribute in concreteClass.GetCustomAttributes()) CollectConnection(concreteClass, attribute);
         }
-        
+
         void CollectConnection(Type concreteClass, Attribute attribute)
         {
             switch (attribute)
@@ -1789,19 +1789,19 @@ SOFTWARE.
                     break;
             }
         }
-        
+
         void CollectSubscribeToConnection(Type subscribableType, SubscribeToAttribute subscribeToAttribute)
         {
             AddPublishableTypes(subscribableType, subscribeToAttribute.PublishableType);
             AddSubscribableTypes(subscribeToAttribute.PublishableType, subscribableType);
         }
-        
+
         void CollectPublishFromConnection(Type publishableType, PublishFromAttribute publishFromAttribute)
         {
             AddSubscribableTypes(publishableType, publishFromAttribute.SubscribableType);
             AddPublishableTypes(publishFromAttribute.SubscribableType, publishableType);
         }
-        
+
         void AddPublishableTypes(Type subscribableType, Type publishableType)
         {
             if (! _publishableTypesSourceMap.ContainsKey(subscribableType))
@@ -1811,7 +1811,7 @@ SOFTWARE.
             if (_publishableTypesSourceMap[subscribableType].Contains(publishableType)) return;
             _publishableTypesSourceMap[subscribableType].Add(publishableType);
         }
-        
+
         void AddSubscribableTypes(Type publishableType, Type subscribableType)
         {
             if (! _subscribableTypesSourceMap.ContainsKey(publishableType))
@@ -1821,7 +1821,7 @@ SOFTWARE.
             if (_subscribableTypesSourceMap[publishableType].Contains(subscribableType)) return;
             _subscribableTypesSourceMap[publishableType].Add(subscribableType);
         }
-        
+
 #if BINDI_SUPPORT_VCONTAINER
         public static void TryInstall(IContainerBuilder builder)
         {
@@ -1831,7 +1831,7 @@ SOFTWARE.
         }
 #endif
     }
-    
+
 #if BINDI_SUPPORT_VCONTAINER
     public sealed class ConnectionBinder
     {
@@ -1839,13 +1839,13 @@ SOFTWARE.
         readonly object[] _subscribeArguments = new object[1];
         readonly BinDiOptions _binDiOptions;
         readonly ConnectionProvider _connectionProvider;
-        
+
         public ConnectionBinder(BinDiOptions binDiOptions, ConnectionProvider connectionProvider)
         {
             _binDiOptions = binDiOptions;
             _connectionProvider = connectionProvider;
         }
-        
+
         public void Bind<T>(IContainerBuilder builder, T instance)
         {
             var instanceType = instance.GetType();
@@ -1866,7 +1866,7 @@ SOFTWARE.
                 }
             });
         }
-        
+
         IDisposable Connect(object subscribable, object publishable)
         {
             if (subscribable is ISubscribable voidSubscribable && publishable is IPublishable voidPublishable) return ConnectVoidPubSub(voidSubscribable, voidPublishable);
@@ -1877,7 +1877,7 @@ SOFTWARE.
 #endif
             throw new ArgumentException($"Failed to connect [{subscribable}] to [{publishable}].");
         }
-        
+
         static bool TryGetGenericArgument(Type type, Type genericDefinition, out Type genericArgument)
         {
             foreach (var instanceInterface in type.GetInterfaces())
@@ -1891,14 +1891,14 @@ SOFTWARE.
             genericArgument = default;
             return false;
         }
-        
+
         IDisposable ConnectVoidPubSub(ISubscribable subscribable, IPublishable publishable)
         {
             var connection = subscribable.Subscribe(publishable);
             if (_binDiOptions.PubSubConnectionLogEnabled) Debug.Log($"{nameof( BinDI )} connected [{subscribable}] to [{publishable}].");
             return connection;
         }
-        
+
         IDisposable ConnectValuePubSub(Type valueType, object subscribable, object publishable)
         {
             _genericParameterArguments[0] = valueType;
@@ -1908,7 +1908,7 @@ SOFTWARE.
                 ? Connect(subscribable, publishable, subscribeMethod)
                 : throw new ArgumentException($"Failed to connect [{subscribable}] to [{publishable}].");
         }
-        
+
 #if BINDI_SUPPORT_UNITASK
         IDisposable ConnectAsyncVoidPubSub(IAsyncSubscribable subscribable, IAsyncPublishable publishable)
         {
@@ -1927,7 +1927,7 @@ SOFTWARE.
                 : throw new ArgumentException($"Failed to connect [{subscribable}] to [{publishable}].");
         }
 #endif
-        
+
         IDisposable Connect(object subscribable, object publishable, MethodInfo subscribeMethod)
         {
             _subscribeArguments[0] = publishable;
@@ -1935,7 +1935,7 @@ SOFTWARE.
             if (_binDiOptions.PubSubConnectionLogEnabled) Debug.Log($"{nameof( BinDI )} connected [{subscribable}] to [{publishable}].");
             return connection;
         }
-        
+
         public static void TryInstall(IContainerBuilder builder)
         {
             if (builder.Exists(typeof( ConnectionBinder ), findParentScopes: true)) return;
@@ -1945,54 +1945,54 @@ SOFTWARE.
         }
     }
 #endif
-    
+
     public static class ConnectionUtil
     {
         public static IDisposable Subscribe(this ISubscribable subscribable, Action publish)
         {
             return subscribable.Subscribe(new ActionPublishable(publish));
         }
-        
+
         public static IDisposable Subscribe<T>(this ISubscribable<T> subscribable, Action<T> publish)
         {
             return subscribable.Subscribe(new ActionPublishable<T>(publish));
         }
-        
+
 #if BINDI_SUPPORT_R3
         public static IDisposable Subscribe<T>(this Observable<T> observable, IPublishable publishable)
         {
             return observable.Subscribe(publishable, static (_, s) => s.Publish());
         }
 #endif
-        
+
 #if BINDI_SUPPORT_R3
         public static IDisposable Subscribe<T>(this Observable<T> observable, IPublishable<T> publishable)
         {
             return observable.Subscribe(publishable, static (v, s) => s.Publish(v));
         }
 #endif
-        
+
 #if BINDI_SUPPORT_R3
         public static IDisposable SubscribeWithState<TValue, TState>(this Observable<TValue> observable, TState state, Action<TValue, TState> onNext)
         {
             return observable.Subscribe((state, onNext), static (value, t) => t.onNext(value, t.state));
         }
 #endif
-        
+
 #if !BINDI_SUPPORT_R3 && BINDI_SUPPORT_UNIRX
         public static IDisposable Subscribe<T>(this IObservable<T> observable, IPublishable publishable)
         {
             return observable.SubscribeWithState(publishable, static (_, s) => s.Publish());
         }
 #endif
-        
+
 #if !BINDI_SUPPORT_R3 && BINDI_SUPPORT_UNIRX
         public static IDisposable Subscribe<T>(this IObservable<T> observable, IPublishable<T> publishable)
         {
             return observable.SubscribeWithState(publishable, static (v, s) => s.Publish(v));
         }
 #endif
-        
+
 #if !BINDI_SUPPORT_R3 && BINDI_SUPPORT_UNIRX
         public static IDisposable Subscribe<TValue, TState>(this IObservable<TValue> observable, TState state, Action<TValue, TState> onNext)
         {
@@ -2000,11 +2000,11 @@ SOFTWARE.
         }
 #endif
     }
-    
+
     #endregion
-    
+
     #region GameObjectModules
-    
+
 #if BINDI_SUPPORT_VCONTAINER
     public sealed class GameObjectScopeBuilder
     {
@@ -2012,14 +2012,14 @@ SOFTWARE.
         readonly RegistrationBinder _registrationBinder;
         readonly ConnectionBinder _connectionBinder;
         readonly IObjectResolver _scope;
-        
+
         public GameObjectScopeBuilder(RegistrationBinder registrationBinder, ConnectionBinder connectionBinder, IObjectResolver scope)
         {
             _registrationBinder = registrationBinder;
             _connectionBinder = connectionBinder;
             _scope = scope;
         }
-        
+
         public IScopedObjectResolver Build(GameObject gameObject, Action<IContainerBuilder> installation = null)
         {
             if (! gameObject) return default;
@@ -2032,7 +2032,7 @@ SOFTWARE.
             else gameObject.AddComponent<OnDestroyTrigger>().OnDestroyHandler = scope.Dispose;
             return scope;
         }
-        
+
         public void Build(GameObject gameObject, IContainerBuilder builder)
         {
             if (! gameObject) return;
@@ -2043,7 +2043,7 @@ SOFTWARE.
             var transform = gameObject.transform;
             for (var i = 0; i < transform.childCount; i++) TryBuildChild(builder, transform.GetChild(i));
         }
-        
+
         void RegisterChildComponents(GameObject gameObject, IContainerBuilder builder)
         {
             gameObject.GetComponentsInChildren(_getComponentsBuffer);
@@ -2056,7 +2056,7 @@ SOFTWARE.
                 }
             }
         }
-        
+
         void TryBuildChild(IContainerBuilder builder, Transform child)
         {
             if (! child) return;
@@ -2070,7 +2070,7 @@ SOFTWARE.
             BindComponents(builder);
             for (var i = 0; i < child.childCount; i++) TryBuildChild(builder, child.GetChild(i));
         }
-        
+
         void BindComponents(IContainerBuilder builder)
         {
             for (var i = 0; i < _getComponentsBuffer.Count; i++)
@@ -2083,12 +2083,12 @@ SOFTWARE.
                 _connectionBinder.Bind(builder, component);
             }
         }
-        
+
         static void BuildNewScope(IContainerBuilder builder, GameObject gameObject)
         {
             builder.RegisterBuildCallback(scope => scope.Resolve<GameObjectScopeBuilder>().Build(gameObject));
         }
-        
+
         public static void TryInstall(IContainerBuilder builder)
         {
             if (builder.Exists(typeof( GameObjectScopeBuilder ))) return;
@@ -2098,19 +2098,19 @@ SOFTWARE.
         }
     }
 #endif
-    
+
 #if BINDI_SUPPORT_VCONTAINER
     public sealed class PrefabBuilder
     {
         readonly GameObjectScopeBuilder _gameObjectScopeBuilder;
         readonly IObjectResolver _scope;
-        
+
         public PrefabBuilder(GameObjectScopeBuilder gameObjectScopeBuilder, IObjectResolver scope)
         {
             _gameObjectScopeBuilder = gameObjectScopeBuilder;
             _scope = scope;
         }
-        
+
         public T Build<T>(T prefab, Transform parent = null, Action<IContainerBuilder> install = null) where T : Component
         {
             if (prefab == null) return null;
@@ -2120,7 +2120,7 @@ SOFTWARE.
             else instance.gameObject.AddComponent<OnDestroyTrigger>().OnDestroyHandler = scope.Dispose;
             return instance;
         }
-        
+
         public GameObject Build(GameObject prefab, Transform parent = null, Action<IContainerBuilder> install = null)
         {
             if (prefab == null) return null;
@@ -2130,13 +2130,13 @@ SOFTWARE.
             else instance.AddComponent<OnDestroyTrigger>().OnDestroyHandler = scope.Dispose;
             return instance;
         }
-        
+
         void ConfigureScope(IContainerBuilder builder, Action<IContainerBuilder> install, GameObject gameObject)
         {
             install?.Invoke(builder);
             _gameObjectScopeBuilder.Build(gameObject, builder);
         }
-        
+
         public static void TryInstall(IContainerBuilder builder)
         {
             if (builder.Exists(typeof( PrefabBuilder ))) return;
@@ -2145,7 +2145,7 @@ SOFTWARE.
         }
     }
 #endif
-    
+
     public static class GameObjectUtil
     {
 #if BINDI_SUPPORT_VCONTAINER
@@ -2159,6 +2159,6 @@ SOFTWARE.
         }
 #endif
     }
-    
+
     #endregion
 }
