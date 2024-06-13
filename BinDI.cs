@@ -166,7 +166,9 @@ SOFTWARE.
         }
     }
 
-    public interface IScopedDisposable
+    public interface IScopedDisposable : ICompositeDisposable { }
+
+    public interface ICompositeDisposable
     {
         void Add(IDisposable disposable);
     }
@@ -260,7 +262,7 @@ SOFTWARE.
 
     public static class DisposableUtil
     {
-        public static T AddTo<T>(this T disposable, IScopedDisposable scopedDisposable) where T : IDisposable
+        public static T AddTo<T>(this T disposable, ICompositeDisposable scopedDisposable) where T : IDisposable
         {
             scopedDisposable.Add(disposable);
             return disposable;
@@ -1473,7 +1475,7 @@ SOFTWARE.
 
     #region Properties
 
-    public class Property<T> : ISubscribable, IBufferedSubscribable<T>, IPublishable<T>, IDisposable, IScopedDisposable
+    public class Property<T> : ISubscribable, IBufferedSubscribable<T>, IPublishable<T>, IDisposable, ICompositeDisposable
     {
 #if BINDI_SUPPORT_R3
         readonly ReactiveProperty<T> _property = new();
@@ -1511,7 +1513,7 @@ SOFTWARE.
                 : Disposable.Empty;
         }
 
-        void IScopedDisposable.Add(IDisposable disposable)
+        void ICompositeDisposable.Add(IDisposable disposable)
         {
             _disposables.Add(disposable);
         }
@@ -1560,7 +1562,7 @@ SOFTWARE.
                 : Disposable.Empty;
         }
 
-        void IScopedDisposable.Add(IDisposable disposable)
+        void ICompositeDisposable.Add(IDisposable disposable)
         {
             _disposables.Add(disposable);
         }
@@ -1598,7 +1600,7 @@ SOFTWARE.
             return _broker.Subscribe(publishable);
         }
 
-        void IScopedDisposable.Add(IDisposable disposable)
+        void ICompositeDisposable.Add(IDisposable disposable)
         {
             _disposables.Add(disposable);
         }
@@ -1613,7 +1615,7 @@ SOFTWARE.
 #endif
     }
 
-    public abstract class ReadOnlyProperty<T> : ISubscribable, IBufferedSubscribable<T>, IDisposable, IScopedDisposable
+    public abstract class ReadOnlyProperty<T> : ISubscribable, IBufferedSubscribable<T>, IDisposable, ICompositeDisposable
     {
 #if BINDI_SUPPORT_R3
         readonly ReactiveProperty<T> _property = new();
@@ -1646,7 +1648,7 @@ SOFTWARE.
             return _property.Subscribe(publishable, static (value, p) => p.Publish(value));
         }
 
-        void IScopedDisposable.Add(IDisposable disposable)
+        void ICompositeDisposable.Add(IDisposable disposable)
         {
             _disposableBag.Add(disposable);
         }
@@ -1689,7 +1691,7 @@ SOFTWARE.
             return _property.SubscribeWithState(publishable, static (value, p) => p.Publish(value));
         }
 
-        void IScopedDisposable.Add(IDisposable disposable)
+        void ICompositeDisposable.Add(IDisposable disposable)
         {
             _disposables.Add(disposable);
         }
@@ -1727,7 +1729,7 @@ SOFTWARE.
             return _broker.Subscribe(publishable);
         }
 
-        void IScopedDisposable.Add(IDisposable disposable)
+        void ICompositeDisposable.Add(IDisposable disposable)
         {
             _disposables.Add(disposable);
         }
@@ -1742,7 +1744,7 @@ SOFTWARE.
 #endif
     }
 
-    public abstract class ReadOnlyList<T> : IReadOnlyList<T>, IDisposable, IScopedDisposable
+    public abstract class ReadOnlyList<T> : IReadOnlyList<T>, IDisposable, ICompositeDisposable
     {
         // ReSharper disable once CollectionNeverUpdated.Global
         // ReSharper disable once MemberCanBePrivate.Global
@@ -1754,15 +1756,15 @@ SOFTWARE.
 
 #if BINDI_SUPPORT_R3
         DisposableBag _disposableBag;
-        void IScopedDisposable.Add(IDisposable disposable) => _disposableBag.Add(disposable);
+        void ICompositeDisposable.Add(IDisposable disposable) => _disposableBag.Add(disposable);
         void IDisposable.Dispose() => _disposableBag.Dispose();
 #elif BINDI_SUPPORT_UNIRX
         readonly CompositeDisposable _disposables = new();
-        void IScopedDisposable.Add(IDisposable disposable) => _disposables.Add(disposable);
+        void ICompositeDisposable.Add(IDisposable disposable) => _disposables.Add(disposable);
         void IDisposable.Dispose() => _disposables.Dispose();
 #else
         readonly List<IDisposable> _disposables = new();
-        void IScopedDisposable.Add(IDisposable disposable) => _disposables.Add(disposable);
+        void ICompositeDisposable.Add(IDisposable disposable) => _disposables.Add(disposable);
         void IDisposable.Dispose()
         {
             foreach (var disposable in _disposables) disposable.Dispose();
