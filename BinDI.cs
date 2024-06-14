@@ -1818,7 +1818,7 @@ SOFTWARE.
         DisposableBag _disposables;
         bool _disposed;
 
-        public Observable<T> AsObservable => _subject;
+        public Observable<T> AsObservable() => _subject;
 
         protected void Publish(T value)
         {
@@ -1855,7 +1855,7 @@ SOFTWARE.
         readonly CompositeDisposable _disposables = new();
         bool _disposed;
 
-        public IObservable<T> AsObservable => _subject;
+        public IObservable<T> AsObservable() => _subject;
 
         protected void Publish(T value)
         {
