@@ -1927,6 +1927,84 @@ SOFTWARE.
 
     #endregion
 
+    #region Initializables
+
+    public abstract class Initializable : IInitializable, ICompositeDisposable, IDisposable
+    {
+#if BINDI_SUPPORT_R3
+        DisposableBag _disposables;
+        bool _disposed;
+
+        void IInitializable.Initialize() => Initialize();
+        protected virtual void Initialize() { }
+
+        public void Add(IDisposable disposable)
+        {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
+            _disposables.Add(disposable);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposables.Dispose();
+            _disposed = true;
+        }
+#elif BINDI_SUPPORT_UNIRX
+        readonly CompositeDisposable _disposables;
+        bool _disposed;
+
+        void IInitializable.Initialize() => Initialize();
+        protected virtual void Initialize() { }
+
+        public void Add(IDisposable disposable)
+        {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
+            _disposables.Add(disposable);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposables.Dispose();
+            _disposed = true;
+        }
+#else
+        readonly List<IDisposable> _disposables = new();
+        bool _disposed;
+
+        void IInitializable.Initialize() => Initialize();
+        protected virtual void Initialize() { }
+
+        public void Add(IDisposable disposable)
+        {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
+            _disposables.Add(disposable);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            foreach (var disposable in _disposables) disposable.Dispose();
+            _disposed = true;
+        }
+#endif
+    }
+
+    #endregion
+
     #region Connection Modules
 
     public sealed class ConnectionProvider
