@@ -2,6 +2,7 @@
 
 // ReSharper disable RedundantUsingDirective
 // #undef BINDI_SUPPORT_VCONTAINER
+
 // #undef BINDI_SUPPORT_R3
 // #undef BINDI_SUPPORT_UNIRX
 // #undef BINDI_SUPPORT_UNITASK
@@ -1620,7 +1621,7 @@ SOFTWARE.
 #if BINDI_SUPPORT_R3
         readonly ReactiveProperty<T> _property = new();
         bool _disposed;
-        DisposableBag _disposableBag;
+        DisposableBag _disposables;
 
         public Observable<T> AsObservable() => _property;
 
@@ -1650,14 +1651,14 @@ SOFTWARE.
 
         void ICompositeDisposable.Add(IDisposable disposable)
         {
-            _disposableBag.Add(disposable);
+            _disposables.Add(disposable);
         }
 
         void IDisposable.Dispose()
         {
             if (_disposed) return;
             _property.Dispose();
-            _disposableBag.Dispose();
+            _disposables.Dispose();
             _disposed = true;
         }
 #elif BINDI_SUPPORT_UNIRX
@@ -1755,9 +1756,9 @@ SOFTWARE.
         IEnumerator IEnumerable.GetEnumerator() => List.GetEnumerator();
 
 #if BINDI_SUPPORT_R3
-        DisposableBag _disposableBag;
-        void ICompositeDisposable.Add(IDisposable disposable) => _disposableBag.Add(disposable);
-        void IDisposable.Dispose() => _disposableBag.Dispose();
+        DisposableBag _disposables;
+        void ICompositeDisposable.Add(IDisposable disposable) => _disposables.Add(disposable);
+        void IDisposable.Dispose() => _disposables.Dispose();
 #elif BINDI_SUPPORT_UNIRX
         readonly CompositeDisposable _disposables = new();
         void ICompositeDisposable.Add(IDisposable disposable) => _disposables.Add(disposable);
@@ -1804,6 +1805,124 @@ SOFTWARE.
         {
             _publish(value);
         }
+    }
+
+    #endregion
+
+    #region Subscribables
+
+    public abstract class Subscribable<T> : ISubscribable<T>, ICompositeDisposable, IDisposable
+    {
+#if BINDI_SUPPORT_R3
+        readonly Subject<T> _subject = new();
+        DisposableBag _disposables;
+        bool _disposed;
+
+        public Observable<T> AsObservable => _subject;
+
+        protected void Publish(T value)
+        {
+            if (_disposed) return;
+            _subject.OnNext(value);
+        }
+
+        public IDisposable Subscribe(IPublishable<T> publishable)
+        {
+            return ! _disposed
+                ? _subject.Subscribe(publishable)
+                : Disposable.Empty;
+        }
+
+        void ICompositeDisposable.Add(IDisposable disposable)
+        {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
+            _disposables.Add(disposable);
+        }
+
+        void IDisposable.Dispose()
+        {
+            if (_disposed) return;
+            _subject.Dispose();
+            _disposables.Dispose();
+            _disposed = true;
+        }
+#elif BINDI_SUPPORT_UNIRX
+        readonly Subject<T> _subject = new();
+        readonly CompositeDisposable _disposables = new();
+        bool _disposed;
+
+        public IObservable<T> AsObservable => _subject;
+
+        protected void Publish(T value)
+        {
+            if (_disposed) return;
+            _subject.OnNext(value);
+        }
+
+        public IDisposable Subscribe(IPublishable<T> publishable)
+        {
+            return ! _disposed
+                ? _subject.Subscribe(publishable)
+                : Disposable.Empty;
+        }
+
+        void ICompositeDisposable.Add(IDisposable disposable)
+        {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
+            _disposables.Add(disposable);
+        }
+
+        void IDisposable.Dispose()
+        {
+            if (_disposed) return;
+            _subject.Dispose();
+            _disposables.Dispose();
+            _disposed = true;
+        }
+#else
+        readonly List<IPublishable<T>> _publishables = new();
+        readonly List<IDisposable> _disposables = new();
+        bool _disposed;
+
+        protected void Publish(T value)
+        {
+            if (_disposed) return;
+            foreach (var publishable in _publishables) publishable.Publish(value);
+        }
+
+        public IDisposable Subscribe(IPublishable<T> publishable)
+        {
+            if (_disposed) return EmptyDisposable.Default;
+            _publishables.Add(publishable);
+            return new RemoveDisposable<IPublishable<T>>(_publishables, publishable);
+        }
+
+        void ICompositeDisposable.Add(IDisposable disposable)
+        {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
+            _disposables.Add(disposable);
+        }
+
+        void IDisposable.Dispose()
+        {
+            if (_disposed) return;
+            _publishables.Clear();
+            foreach (var disposable in _disposables) disposable.Dispose();
+            _disposed = true;
+        }
+#endif
     }
 
     #endregion
