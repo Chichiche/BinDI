@@ -2,7 +2,6 @@
 
 // ReSharper disable RedundantUsingDirective
 // #undef BINDI_SUPPORT_VCONTAINER
-
 // #undef BINDI_SUPPORT_R3
 // #undef BINDI_SUPPORT_UNIRX
 // #undef BINDI_SUPPORT_UNITASK
@@ -1516,6 +1515,11 @@ SOFTWARE.
 
         void ICompositeDisposable.Add(IDisposable disposable)
         {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
             _disposables.Add(disposable);
         }
 
@@ -1565,6 +1569,11 @@ SOFTWARE.
 
         void ICompositeDisposable.Add(IDisposable disposable)
         {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
             _disposables.Add(disposable);
         }
 
@@ -1603,6 +1612,11 @@ SOFTWARE.
 
         void ICompositeDisposable.Add(IDisposable disposable)
         {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
             _disposables.Add(disposable);
         }
 
@@ -1651,6 +1665,11 @@ SOFTWARE.
 
         void ICompositeDisposable.Add(IDisposable disposable)
         {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
             _disposables.Add(disposable);
         }
 
@@ -1694,6 +1713,11 @@ SOFTWARE.
 
         void ICompositeDisposable.Add(IDisposable disposable)
         {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
             _disposables.Add(disposable);
         }
 
@@ -1732,6 +1756,11 @@ SOFTWARE.
 
         void ICompositeDisposable.Add(IDisposable disposable)
         {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
             _disposables.Add(disposable);
         }
 
