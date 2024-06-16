@@ -1649,6 +1649,8 @@ SOFTWARE.
             _property.Value = value;
         }
 
+        protected void ForcePublish() => _property.ForceNotify();
+
         public IDisposable Subscribe(IPublishable publishable)
         {
             return ! _disposed
