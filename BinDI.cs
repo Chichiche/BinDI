@@ -295,6 +295,11 @@ SOFTWARE.
 
     #region EditorWindow
 
+    public interface IBinDiWindowAssemblyWhiteList
+    {
+        IEnumerable<string> WhiteList { get; }
+    }
+
 #if UNITY_EDITOR && BINDI_SUPPORT_VCONTAINER
     // ReSharper disable once InconsistentNaming
     public sealed class BinDIWindow : EditorWindow
@@ -399,6 +404,13 @@ SOFTWARE.
             public void Refresh()
             {
                 var refreshScopeBuilder = new ContainerBuilder();
+                var whiteList = AssetDatabase.FindAssets($"t:{nameof( ScriptableObject )}")
+                    .Select(AssetDatabase.GUIDToAssetPath)
+                    .Select(AssetDatabase.LoadAssetAtPath<ScriptableObject>)
+                    // ReSharper disable once SuspiciousTypeConversion.Global
+                    .OfType<IBinDiWindowAssemblyWhiteList>()
+                    .FirstOrDefault();
+                if (whiteList != null) refreshScopeBuilder.RegisterInstance(new AssemblyWhiteListFilter(whiteList.WhiteList)).As<IAssemblyFilter>();
                 RegistrationProvider.TryInstall(refreshScopeBuilder);
                 ConnectionProvider.TryInstall(refreshScopeBuilder);
                 using var refreshScope = refreshScopeBuilder.Build();
@@ -666,6 +678,11 @@ SOFTWARE.
         public AssemblyWhiteListFilter(params string[] whiteList)
         {
             _whiteList = whiteList;
+        }
+
+        public AssemblyWhiteListFilter(IEnumerable<string> whiteList)
+        {
+            _whiteList = whiteList.ToArray();
         }
 
         public bool CanCollect(string assemblyFullName)
