@@ -965,7 +965,7 @@ SOFTWARE.
 
         static AsyncOperationHandle<UnityObject> LoadAddressable(string address)
         {
-#if !UNITY_EDITOR
+#if UNITY_EDITOR
             if (AddressableAssetSettingsDefaultObject.Settings == null)
             {
                 throw new InvalidOperationException("Addressable asset system is not set up.");
