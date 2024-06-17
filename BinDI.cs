@@ -1977,6 +1977,7 @@ SOFTWARE.
 
     #region Initializables
 
+#if BINDI_SUPPORT_VCONTAINER
     public abstract class Initializable : IInitializable, ICompositeDisposable, IDisposable
     {
 #if BINDI_SUPPORT_R3
@@ -2050,6 +2051,8 @@ SOFTWARE.
         }
 #endif
     }
+
+#endif
 
     #endregion
 
