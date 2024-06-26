@@ -2168,17 +2168,22 @@ SOFTWARE.
             var publishableTypes = _connectionProvider.GetPublishableTypes(instanceType);
             var subscribableTypes = _connectionProvider.GetSubscribableTypes(instanceType);
             if (publishableTypes.Count + subscribableTypes.Count == 0) return;
+            var componentInstance = instance as Component;
             builder.RegisterBuildCallback(scope =>
             {
                 for (var i = 0; i < publishableTypes.Count; i++)
                 {
                     if (! scope.TryResolve(publishableTypes[i], out var publishable)) continue;
-                    Connect(instance, publishable).AddTo(scope);
+                    var connection = Connect(instance, publishable);
+                    if (componentInstance) connection.AddTo(componentInstance);
+                    else connection.AddTo(scope);
                 }
                 for (var i = 0; i < subscribableTypes.Count; i++)
                 {
                     if (! scope.TryResolve(subscribableTypes[i], out var subscribable)) continue;
-                    Connect(subscribable, instance).AddTo(scope);
+                    var connection = Connect(subscribable, instance);
+                    if (componentInstance) connection.AddTo(componentInstance);
+                    else connection.AddTo(scope);
                 }
             });
         }
