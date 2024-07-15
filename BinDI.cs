@@ -2399,7 +2399,6 @@ SOFTWARE.
                 var component = _getComponentsBuffer[i];
                 if (! component) continue;
                 var componentType = component.GetType();
-                builder.RegisterBuildCallback(scope => scope.Inject(component));
                 _registrationBinder.Bind(builder, componentType);
                 _connectionBinder.Bind(builder, component);
             }
