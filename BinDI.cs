@@ -599,6 +599,14 @@ SOFTWARE.
 
 #if BINDI_SUPPORT_VCONTAINER
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
+    public sealed class InstallToGlobalAttribute : Attribute
+    {
+        public object Scope => GlobalScope.Default;
+    }
+#endif
+
+#if BINDI_SUPPORT_VCONTAINER
+    [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     public sealed class RegisterToAttribute : Attribute
     {
         public object Scope { get; }
@@ -839,18 +847,26 @@ SOFTWARE.
                     }
                     GetScopedInstallationList(installToAttribute.Scope).Add(new Installation(concreteType));
                     break;
+                case InstallToGlobalAttribute installToGlobalAttribute:
+                    if (concreteType.GetInterface(nameof( IInstallable )) == null)
+                    {
+                        Debug.LogWarning($"{concreteType} is marked with {nameof( installToGlobalAttribute )}, but does not implement {nameof( IInstallable )}.");
+                        return;
+                    }
+                    GetScopedInstallationList(installToGlobalAttribute.Scope).Add(new Installation(concreteType));
+                    break;
                 case RegisterToAttribute registerToAttribute:
                     GetScopedRegistrationList(registerToAttribute.Scope).Add(new DomainRegistration(concreteType, registerToAttribute.Lifetime));
                     break;
                 case RegisterToGlobalAttribute registerToGlobalAttribute:
-                    _scopedRegistrationListSourceMap[GlobalScope.Default].Add(new DomainRegistration(concreteType, registerToGlobalAttribute.Lifetime));
+                    _scopedRegistrationListSourceMap[registerToGlobalAttribute.Scope].Add(new DomainRegistration(concreteType, registerToGlobalAttribute.Lifetime));
                     break;
 #if BINDI_SUPPORT_ADDRESSABLE
                 case RegisterAddressableToAttribute registerAddressableToAttribute:
                     GetScopedRegistrationList(registerAddressableToAttribute.Scope).Add(new AddressableRegistration(concreteType, registerAddressableToAttribute.Address));
                     break;
                 case RegisterAddressableToGlobalAttribute registerAddressableToGlobalAttribute:
-                    _scopedRegistrationListSourceMap[GlobalScope.Default].Add(new AddressableRegistration(concreteType, registerAddressableToGlobalAttribute.Address));
+                    _scopedRegistrationListSourceMap[registerAddressableToGlobalAttribute.Scope].Add(new AddressableRegistration(concreteType, registerAddressableToGlobalAttribute.Address));
                     break;
 #endif
             }
