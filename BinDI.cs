@@ -634,6 +634,35 @@ SOFTWARE.
     }
 #endif
 
+#if BINDI_SUPPORT_VCONTAINER
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
+    public sealed class RegisterBrokerToAttribute : Attribute
+    {
+        public object Scope { get; }
+        public Lifetime Lifetime { get; }
+
+        public RegisterBrokerToAttribute(object scope, Lifetime lifetime = Lifetime.Singleton)
+        {
+            Scope = scope;
+            Lifetime = lifetime;
+        }
+    }
+#endif
+
+#if BINDI_SUPPORT_VCONTAINER
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
+    public sealed class RegisterBrokerToGlobalAttribute : Attribute
+    {
+        public object Scope => GlobalScope.Default;
+        public Lifetime Lifetime { get; }
+
+        public RegisterBrokerToGlobalAttribute(Lifetime lifetime = Lifetime.Singleton)
+        {
+            Lifetime = lifetime;
+        }
+    }
+#endif
+
 #if BINDI_SUPPORT_VCONTAINER && BINDI_SUPPORT_ADDRESSABLE
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     public sealed class RegisterAddressableToAttribute : Attribute
@@ -758,30 +787,30 @@ SOFTWARE.
     {
         readonly BinDiOptions _binDiOptions;
         readonly IAssemblyFilter _assemblyFilter;
-        readonly Type[] _concreteClasses;
+        readonly Type[] _concreteTypes;
 
         public AppDomainProvider(BinDiOptions binDiOptions, IAssemblyFilter assemblyFilter)
         {
             _binDiOptions = binDiOptions;
             _assemblyFilter = assemblyFilter;
-            _concreteClasses = CollectDomainConcreteClasses().ToArray();
+            _concreteTypes = CollectDomainConcreteTypes().ToArray();
         }
 
-        public int ConcreteClassCount => _concreteClasses.Length;
-        public Type GetConcreteClass(int index) => _concreteClasses[index];
+        public int ConcreteTypeCount => _concreteTypes.Length;
+        public Type GetConcreteType(int index) => _concreteTypes[index];
 
-        IEnumerable<Type> CollectDomainConcreteClasses()
+        IEnumerable<Type> CollectDomainConcreteTypes()
         {
-            return AppDomain.CurrentDomain.GetAssemblies().SelectMany(CollectAssemblyConcreteClasses);
+            return AppDomain.CurrentDomain.GetAssemblies().SelectMany(CollectAssemblyConcreteTypes);
         }
 
-        IEnumerable<Type> CollectAssemblyConcreteClasses(Assembly assembly)
+        IEnumerable<Type> CollectAssemblyConcreteTypes(Assembly assembly)
         {
             if (! _assemblyFilter.CanCollect(assembly.FullName)) yield break;
             if (_binDiOptions.CollectAssemblyLogEnabled) Debug.Log($"BinDI collect assembly concrete types from {assembly.FullName}.");
             foreach (var definedType in assembly.DefinedTypes)
             {
-                if (! definedType.IsClass || definedType.IsAbstract) continue;
+                if (definedType.IsAbstract) continue;
                 yield return definedType;
             }
         }
@@ -809,7 +838,7 @@ SOFTWARE.
 
         public RegistrationProvider(AppDomainProvider appDomainProvider)
         {
-            for (var i = 0; i < appDomainProvider.ConcreteClassCount; i++) Collect(appDomainProvider.GetConcreteClass(i));
+            for (var i = 0; i < appDomainProvider.ConcreteTypeCount; i++) Collect(appDomainProvider.GetConcreteType(i));
             _scopedRegistrationListMap = _scopedRegistrationListSourceMap.ToDictionary(kv => kv.Key, kv => new ReadOnlyCollection<IRegistration>(kv.Value));
             _scopedInstallationListMap = _scopedInstallationListSourceMap.ToDictionary(kv => kv.Key, kv => new ReadOnlyCollection<Installation>(kv.Value));
             Scopes = new ReadOnlyCollection<object>(_scopedRegistrationListSourceMap.Keys.Concat(_scopedInstallationListSourceMap.Keys).Distinct().ToArray());
@@ -860,6 +889,14 @@ SOFTWARE.
                     break;
                 case RegisterToGlobalAttribute registerToGlobalAttribute:
                     _scopedRegistrationListSourceMap[registerToGlobalAttribute.Scope].Add(new DomainRegistration(concreteType, registerToGlobalAttribute.Lifetime));
+                    break;
+                case RegisterBrokerToAttribute registerBrokerToAttribute:
+                    Debug.Log(typeof( Broker<> ).MakeGenericType(concreteType));
+                    GetScopedRegistrationList(registerBrokerToAttribute.Scope).Add(new DomainRegistration(typeof( Broker<> ).MakeGenericType(concreteType), registerBrokerToAttribute.Lifetime));
+                    break;
+                case RegisterBrokerToGlobalAttribute registerBrokerToGlobalAttribute:
+                    Debug.Log(typeof( Broker<> ).MakeGenericType(concreteType));
+                    _scopedRegistrationListSourceMap[registerBrokerToGlobalAttribute.Scope].Add(new DomainRegistration(typeof( Broker<> ).MakeGenericType(concreteType), registerBrokerToGlobalAttribute.Lifetime));
                     break;
 #if BINDI_SUPPORT_ADDRESSABLE
                 case RegisterAddressableToAttribute registerAddressableToAttribute:
@@ -2241,23 +2278,23 @@ SOFTWARE.
 
         void CollectConnections(AppDomainProvider appDomainProvider)
         {
-            for (var i = 0; i < appDomainProvider.ConcreteClassCount; i++) CollectConnections(appDomainProvider.GetConcreteClass(i));
+            for (var i = 0; i < appDomainProvider.ConcreteTypeCount; i++) CollectConnections(appDomainProvider.GetConcreteType(i));
         }
 
-        void CollectConnections(Type concreteClass)
+        void CollectConnections(Type concreteType)
         {
-            foreach (var attribute in concreteClass.GetCustomAttributes()) CollectConnection(concreteClass, attribute);
+            foreach (var attribute in concreteType.GetCustomAttributes()) CollectConnection(concreteType, attribute);
         }
 
-        void CollectConnection(Type concreteClass, Attribute attribute)
+        void CollectConnection(Type concreteType, Attribute attribute)
         {
             switch (attribute)
             {
                 case SubscribeToAttribute subscribeToAttribute:
-                    CollectSubscribeToConnection(concreteClass, subscribeToAttribute);
+                    CollectSubscribeToConnection(concreteType, subscribeToAttribute);
                     break;
                 case PublishFromAttribute publishFromAttribute:
-                    CollectPublishFromConnection(concreteClass, publishFromAttribute);
+                    CollectPublishFromConnection(concreteType, publishFromAttribute);
                     break;
             }
         }
@@ -2453,6 +2490,15 @@ SOFTWARE.
         public static IDisposable SubscribeWithState<TValue, TState>(this Observable<TValue> observable, TState state, Action<TValue, TState> onNext)
         {
             return observable.Subscribe((state, onNext), static (value, t) => t.onNext(value, t.state));
+        }
+#endif
+
+#if BINDI_SUPPORT_R3
+        public static Observable<T> AsObservable<T>(this ISubscribable<T> subscribable)
+        {
+            var subject = new Subject<T>();
+            subscribable.Subscribe(subject.OnNext);
+            return subject;
         }
 #endif
 
