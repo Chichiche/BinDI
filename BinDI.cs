@@ -1989,6 +1989,136 @@ SOFTWARE.
 #endif
     }
 
+
+    public abstract class Subscribable : ISubscribable, ICompositeDisposable, IDisposable
+    {
+#if BINDI_SUPPORT_R3
+        readonly Subject<Unit> _subject = new();
+        DisposableBag _disposables;
+        bool _disposed;
+
+        public Observable<Unit> AsObservable() => _subject;
+
+        protected void Publish()
+        {
+            if (_disposed) return;
+            _subject.OnNext(Unit.Default);
+        }
+
+        protected void Publish<T>(T _)
+        {
+            Publish();
+        }
+
+        public IDisposable Subscribe(IPublishable publishable)
+        {
+            return ! _disposed
+                ? _subject.Subscribe(publishable)
+                : Disposable.Empty;
+        }
+
+        void ICompositeDisposable.Add(IDisposable disposable)
+        {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
+            _disposables.Add(disposable);
+        }
+
+        void IDisposable.Dispose()
+        {
+            if (_disposed) return;
+            _subject.Dispose();
+            _disposables.Dispose();
+            _disposed = true;
+        }
+#elif BINDI_SUPPORT_UNIRX
+        readonly Subject<Unit> _subject = new();
+        readonly CompositeDisposable _disposables = new();
+        bool _disposed;
+
+        public IObservable<Unit> AsObservable() => _subject;
+
+        protected void Publish()
+        {
+            if (_disposed) return;
+            _subject.OnNext(Unit.Default);
+        }
+
+        protected void Publish<T>(T _)
+        {
+            Publish();
+        }
+
+        public IDisposable Subscribe(IPublishable publishable)
+        {
+            return ! _disposed
+                ? _subject.Subscribe(publishable)
+                : Disposable.Empty;
+        }
+
+        void ICompositeDisposable.Add(IDisposable disposable)
+        {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
+            _disposables.Add(disposable);
+        }
+
+        void IDisposable.Dispose()
+        {
+            if (_disposed) return;
+            _subject.Dispose();
+            _disposables.Dispose();
+            _disposed = true;
+        }
+#else
+        readonly List<IPublishable> _publishables = new();
+        readonly List<IDisposable> _disposables = new();
+        bool _disposed;
+
+        protected void Publish()
+        {
+            if (_disposed) return;
+            foreach (var publishable in _publishables) publishable.Publish();
+        }
+
+        protected void Publish<T>(T _)
+        {
+            Publish();
+        }
+
+        public IDisposable Subscribe(IPublishable publishable)
+        {
+            if (_disposed) return EmptyDisposable.Default;
+            _publishables.Add(publishable);
+            return new RemoveDisposable<IPublishable>(_publishables, publishable);
+        }
+
+        void ICompositeDisposable.Add(IDisposable disposable)
+        {
+            if (_disposed)
+            {
+                disposable.Dispose();
+                return;
+            }
+            _disposables.Add(disposable);
+        }
+
+        void IDisposable.Dispose()
+        {
+            if (_disposed) return;
+            _publishables.Clear();
+            foreach (var disposable in _disposables) disposable.Dispose();
+            _disposed = true;
+        }
+#endif
+    }
+
     #endregion
 
     #region Initializables
@@ -2013,12 +2143,16 @@ SOFTWARE.
             _disposables.Add(disposable);
         }
 
-        public void Dispose()
+        void IDisposable.Dispose()
         {
             if (_disposed) return;
-            _disposables.Dispose();
             _disposed = true;
+            _disposables.Dispose();
+            Dispose();
         }
+
+        protected virtual void Dispose() { }
+
 #elif BINDI_SUPPORT_UNIRX
         readonly CompositeDisposable _disposables;
         bool _disposed;
@@ -2036,12 +2170,15 @@ SOFTWARE.
             _disposables.Add(disposable);
         }
 
-        public void Dispose()
+        void IDisposable.Dispose()
         {
             if (_disposed) return;
-            _disposables.Dispose();
             _disposed = true;
+            _disposables.Dispose();
+            Dispose();
         }
+
+        protected virtual void Dispose() { }
 #else
         readonly List<IDisposable> _disposables = new();
         bool _disposed;
@@ -2059,12 +2196,15 @@ SOFTWARE.
             _disposables.Add(disposable);
         }
 
-        public void Dispose()
+        void IDisposable.Dispose()
         {
             if (_disposed) return;
-            foreach (var disposable in _disposables) disposable.Dispose();
             _disposed = true;
+            foreach (var disposable in _disposables) disposable.Dispose();
+            Dispose();
         }
+
+        protected virtual void Dispose() { }
 #endif
     }
 
