@@ -891,11 +891,9 @@ SOFTWARE.
                     _scopedRegistrationListSourceMap[registerToGlobalAttribute.Scope].Add(new DomainRegistration(concreteType, registerToGlobalAttribute.Lifetime));
                     break;
                 case RegisterBrokerToAttribute registerBrokerToAttribute:
-                    Debug.Log(typeof( Broker<> ).MakeGenericType(concreteType));
                     GetScopedRegistrationList(registerBrokerToAttribute.Scope).Add(new DomainRegistration(typeof( Broker<> ).MakeGenericType(concreteType), registerBrokerToAttribute.Lifetime));
                     break;
                 case RegisterBrokerToGlobalAttribute registerBrokerToGlobalAttribute:
-                    Debug.Log(typeof( Broker<> ).MakeGenericType(concreteType));
                     _scopedRegistrationListSourceMap[registerBrokerToGlobalAttribute.Scope].Add(new DomainRegistration(typeof( Broker<> ).MakeGenericType(concreteType), registerBrokerToGlobalAttribute.Lifetime));
                     break;
 #if BINDI_SUPPORT_ADDRESSABLE
@@ -1717,9 +1715,12 @@ SOFTWARE.
             if (_disposed) return;
             HasValue = true;
             _property.Value = value;
+            OnPublished(value);
         }
 
         protected void ForcePublish() => _property.ForceNotify();
+
+        protected virtual void OnPublished(T value) { }
 
         public IDisposable Subscribe(IPublishable publishable)
         {
@@ -1767,7 +1768,12 @@ SOFTWARE.
             if (_disposed) return;
             HasValue = true;
             _property.Value = value;
+            OnPublished();
         }
+
+        protected void ForcePublish() => _property.ForceNotify();
+
+        protected virtual void OnPublished(T value) { }
 
         public IDisposable Subscribe(IPublishable publishable)
         {
@@ -1814,7 +1820,12 @@ SOFTWARE.
             HasValue = true;
             Value = value;
             _broker.Publish(value);
+            OnPublished(value);
         }
+
+        protected void ForcePublish() => _broker.Publish(Value);
+
+        protected virtual void OnPublished(T value) { }
 
         public IDisposable Subscribe(IPublishable publishable)
         {
