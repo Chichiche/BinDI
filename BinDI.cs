@@ -581,7 +581,7 @@ SOFTWARE.
 
 #if BINDI_SUPPORT_VCONTAINER
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-    public sealed class InstallToAttribute : Attribute
+    public class InstallToAttribute : Attribute
     {
         public object Scope { get; }
 
@@ -607,7 +607,7 @@ SOFTWARE.
 
 #if BINDI_SUPPORT_VCONTAINER
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-    public sealed class RegisterToAttribute : Attribute
+    public class RegisterToAttribute : Attribute
     {
         public object Scope { get; }
         public Lifetime Lifetime { get; }
@@ -636,7 +636,7 @@ SOFTWARE.
 
 #if BINDI_SUPPORT_VCONTAINER
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
-    public sealed class RegisterBrokerToAttribute : Attribute
+    public class RegisterBrokerToAttribute : Attribute
     {
         public object Scope { get; }
         public Lifetime Lifetime { get; }
@@ -665,7 +665,7 @@ SOFTWARE.
 
 #if BINDI_SUPPORT_VCONTAINER && BINDI_SUPPORT_ADDRESSABLE
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-    public sealed class RegisterAddressableToAttribute : Attribute
+    public class RegisterAddressableToAttribute : Attribute
     {
         public object Scope { get; }
         public Lifetime Lifetime => Lifetime.Singleton;
