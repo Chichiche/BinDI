@@ -694,11 +694,6 @@ SOFTWARE.
     }
 #endif
 
-#if BINDI_SUPPORT_VCONTAINER
-    [AttributeUsage(AttributeTargets.Class)]
-    public sealed class ScopedComponentAttribute : Attribute { }
-#endif
-
     #endregion Registration Attributes
 
     #region Registration Modules
@@ -1768,10 +1763,10 @@ SOFTWARE.
             if (_disposed) return;
             HasValue = true;
             _property.Value = value;
-            OnPublished();
+            OnPublished(value);
         }
 
-        protected void ForcePublish() => _property.ForceNotify();
+        protected void ForcePublish() => _property.SetValueAndForceNotify(_property.Value);
 
         protected virtual void OnPublished(T value) { }
 
@@ -2202,7 +2197,7 @@ SOFTWARE.
         protected virtual void Dispose() { }
 
 #elif BINDI_SUPPORT_UNIRX
-        readonly CompositeDisposable _disposables;
+        readonly CompositeDisposable _disposables = new();
         bool _disposed;
 
         void IInitializable.Initialize() => Initialize();
@@ -2543,12 +2538,14 @@ SOFTWARE.
     public sealed class GameObjectScopeBuilder
     {
         readonly List<Component> _getComponentsBuffer = new( 1024 );
+        readonly RegistrationProvider _registrationProvider;
         readonly RegistrationBinder _registrationBinder;
         readonly ConnectionBinder _connectionBinder;
         readonly IObjectResolver _scope;
 
-        public GameObjectScopeBuilder(RegistrationBinder registrationBinder, ConnectionBinder connectionBinder, IObjectResolver scope)
+        public GameObjectScopeBuilder(RegistrationProvider registrationProvider, RegistrationBinder registrationBinder, ConnectionBinder connectionBinder, IObjectResolver scope)
         {
+            _registrationProvider = registrationProvider;
             _registrationBinder = registrationBinder;
             _connectionBinder = connectionBinder;
             _scope = scope;
@@ -2595,7 +2592,7 @@ SOFTWARE.
         {
             if (! child) return;
             child.GetComponents(_getComponentsBuffer);
-            var isScope = _getComponentsBuffer.Any(component => component && component.GetType().GetCustomAttribute<ScopedComponentAttribute>() != null);
+            var isScope = _getComponentsBuffer.Any(component => _registrationProvider.Scopes.Contains(component.GetType()));
             if (isScope)
             {
                 BuildNewScope(builder, child.gameObject);
